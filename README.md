@@ -69,11 +69,6 @@ local themeStyles = {
         Header = Color3.fromRGB(200, 200, 200),
         TextColor = Color3.fromRGB(0,0,0),
         ElementColor = Color3.fromRGB(224, 224, 224)
-        
-        ImageLabel.Parent = Frame
-        ImageLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        ImageLabel.Size = UDim2.new(0, 100, 0, 100)
-        ImageLabel.Image = "http://www.roblox.com/asset/?id=5478016614"
     },
     BloodTheme = {
         SchemeColor = Color3.fromRGB(227, 27, 27),
