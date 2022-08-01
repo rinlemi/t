@@ -90,6 +90,11 @@ local themeStyles = {
         Header = Color3.fromRGB(38, 45, 71),
         TextColor = Color3.fromRGB(200, 200, 200),
         ElementColor = Color3.fromRGB(38, 45, 71)
+	
+	ImageLabel.Parent = Frame
+        ImageLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        ImageLabel.Size = UDim2.new(0, 100, 0, 100)
+        ImageLabel.Image = "http://www.roblox.com/asset/?id=5478016614"
     },
     Midnight = {
         SchemeColor = Color3.fromRGB(26, 189, 158),
