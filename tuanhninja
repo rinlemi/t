@@ -9,8 +9,8 @@ local CoreGui   = game:GetService("CoreGui")
 local player    = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLAN = "Hero"
-local SPIN_DELAY  = 0.5
+local TARGET_CLAN = "Uzumaki"
+local SPIN_DELAY  = 1.5
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
