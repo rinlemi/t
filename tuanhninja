@@ -11,7 +11,7 @@ local player    = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
 local TARGET_CLAN = "Hero"   -- đổi tên clan muốn dừng ở đây
-local SPIN_DELAY  = 1.5      -- giây chờ sau mỗi spin để UI cập nhật
+local SPIN_DELAY  = 2      -- giây chờ sau mỗi spin để UI cập nhật
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
