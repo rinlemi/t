@@ -219,4 +219,31 @@ local function startLoop()
                 if isHit then
                     spinning=false
                     addLog("✅ FOUND: "..clan.." sau "..spinCount.." spin!", C.green)
-                    statusLbl.Text="✅ FOUND: "..clan.." sau "..spinCount.."
+                    statusLbl.Text="✅ FOUND: "..clan.." sau "..spinCount.." lần!"; statusLbl.TextColor3=C.green
+                    setSpinState(false)
+                    showFoundNotif(clan)
+                    break
+                end
+            else
+                addLog(string.format("[%d] (đọc lỗi)", spinCount), C.yellow)
+                resultLbl.Text="👁  Last: (lỗi)"; resultLbl.TextColor3=C.yellow
+                statusLbl.Text="⚠ Không đọc được, thử tiếp..."; statusLbl.TextColor3=C.yellow
+            end
+
+            task.wait(SPIN_DELAY)
+        end
+
+        if not statusLbl.Text:find("FOUND") then
+            addLog("── DỪNG sau "..spinCount.." spin ──", C.muted)
+            statusLbl.Text="⏹ Dừng sau "..spinCount.." spin"; statusLbl.TextColor3=C.muted
+        end
+        setSpinState(false)
+    end)
+end
+
+startBtn.MouseButton1Click:Connect(function()
+    if spinning then spinning=false
+    else startLoop() end
+end)
+
+print("✅ AutoSpin Clan v2.2 | Target: "..table.concat(TARGET_CLANS," / "))
