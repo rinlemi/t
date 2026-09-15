@@ -1,7 +1,6 @@
 -- ============================================================
---  AUTO SPIN CLAN  v2.0  -  Tuanh Script
---  Detect: ImageLabel có ImageColor3 != (0,0,0) = clan thật
---  Target: dừng khi tìm thấy clan "Hero"
+--  AUTO SPIN CLAN  v2.1  -  Tuanh Script
+--  Fix: đọc kết quả trực tiếp từ remote thay vì UI
 -- ============================================================
 
 local Players   = game:GetService("Players")
@@ -10,35 +9,10 @@ local CoreGui   = game:GetService("CoreGui")
 local player    = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLAN = "Hero"   -- đổi tên clan muốn dừng ở đây
-local SPIN_DELAY  = 2      -- giây chờ sau mỗi spin để UI cập nhật
+local TARGET_CLAN = "Hero"
+local SPIN_DELAY  = 0.5
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
-
--- ===================== DETECT =====================
-local function getCurrentClanName()
-    local ok, imagesFrame = pcall(function()
-        return player.PlayerGui
-            :WaitForChild("Interface", 1)
-            :WaitForChild("GachaSelectedFrame", 1)
-            :WaitForChild("ClanFrame", 1)
-            :WaitForChild("SlotContainer", 1)
-            :WaitForChild("Clan1", 1)
-            :WaitForChild("ImagesFrame", 1)
-    end)
-    if not ok or not imagesFrame then return nil end
-
-    for _, child in ipairs(imagesFrame:GetChildren()) do
-        if child:IsA("ImageLabel") then
-            local c = child.ImageColor3
-            -- None luôn có color (0,0,0), clan thật có màu khác
-            if not (c.R < 0.01 and c.G < 0.01 and c.B < 0.01) then
-                return child.Name
-            end
-        end
-    end
-    return nil
-end
 
 -- ===================== STATE =====================
 local spinning = false
@@ -74,13 +48,11 @@ local function lbl(p,text,size,color,xa)
     return l
 end
 
--- Frame chính
 local frame = Instance.new("Frame",gui)
 frame.Size=UDim2.new(0,270,0,210); frame.Position=UDim2.new(0.5,-135,0.5,-105)
 frame.BackgroundColor3=C.bg; frame.BorderSizePixel=0; frame.Active=true; frame.Draggable=true
 corner(12,frame); stroke(frame,C.accent,1.5)
 
--- Title
 local tbar=Instance.new("Frame",frame); tbar.Size=UDim2.new(1,0,0,34); tbar.BackgroundColor3=C.accent; tbar.BorderSizePixel=0; corner(12,tbar)
 local tf=Instance.new("Frame",tbar); tf.Size=UDim2.new(1,0,0.5,0); tf.Position=UDim2.new(0,0,0.5,0); tf.BackgroundColor3=C.accent; tf.BorderSizePixel=0
 local tg=Instance.new("UIGradient",tbar); tg.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(145,65,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(75,20,200))}); tg.Rotation=90
@@ -89,7 +61,6 @@ local closeBtn=Instance.new("TextButton",tbar); closeBtn.Size=UDim2.new(0,24,0,2
 closeBtn.BackgroundColor3=Color3.fromRGB(200,50,50); closeBtn.BorderSizePixel=0; closeBtn.Text="✕"; closeBtn.TextColor3=Color3.fromRGB(255,255,255); closeBtn.TextSize=11; closeBtn.Font=Enum.Font.GothamBold; corner(5,closeBtn)
 closeBtn.MouseButton1Click:Connect(function() spinning=false; gui:Destroy() end)
 
--- Info card
 local infoCard=Instance.new("Frame",frame); infoCard.Size=UDim2.new(1,-16,0,70); infoCard.Position=UDim2.new(0,8,0,42)
 infoCard.BackgroundColor3=C.card; infoCard.BorderSizePixel=0; corner(8,infoCard); stroke(infoCard,C.border,1)
 local ip=Instance.new("UIPadding",infoCard); ip.PaddingLeft=UDim.new(0,10); ip.PaddingTop=UDim.new(0,8)
@@ -98,31 +69,35 @@ local targetLbl = lbl(infoCard,"🎯  Target: "..TARGET_CLAN,11,C.cyan); targetL
 local countLbl  = lbl(infoCard,"🔄  Spins: 0",11,C.yellow); countLbl.Size=UDim2.new(1,-10,0,18); countLbl.Position=UDim2.new(0,0,0,22)
 local resultLbl = lbl(infoCard,"👁  Last: --",11,C.muted); resultLbl.Size=UDim2.new(1,-10,0,18); resultLbl.Position=UDim2.new(0,0,0,44)
 
--- Status bar
 local statusCard=Instance.new("Frame",frame); statusCard.Size=UDim2.new(1,-16,0,28); statusCard.Position=UDim2.new(0,8,0,120)
 statusCard.BackgroundColor3=C.card; statusCard.BorderSizePixel=0; corner(8,statusCard); stroke(statusCard,C.border,1)
 local scp=Instance.new("UIPadding",statusCard); scp.PaddingLeft=UDim.new(0,10); scp.PaddingTop=UDim.new(0,5)
 local statusLbl=lbl(statusCard,"● Sẵn sàng",11,C.muted); statusLbl.Size=UDim2.new(1,-10,0,18)
 
--- Start/Stop button
 local startBtn=Instance.new("TextButton",frame); startBtn.Size=UDim2.new(1,-16,0,36); startBtn.Position=UDim2.new(0,8,0,156)
 startBtn.BackgroundColor3=C.green; startBtn.BorderSizePixel=0; startBtn.Text="▶  BẮT ĐẦU SPIN"
 startBtn.TextColor3=Color3.fromRGB(10,10,20); startBtn.TextSize=13; startBtn.Font=Enum.Font.GothamBold
 corner(8,startBtn); stroke(startBtn,C.border,1)
 
-local verLbl=lbl(frame,"AutoSpin v2.0",9,C.muted,Enum.TextXAlignment.Right)
+local verLbl=lbl(frame,"AutoSpin v2.1",9,C.muted,Enum.TextXAlignment.Right)
 verLbl.Size=UDim2.new(1,-10,0,14); verLbl.Position=UDim2.new(0,0,1,-16)
 
--- ===================== SPIN LOOP =====================
+-- ===================== SPIN =====================
 local function doSpin()
-    local ok,err=pcall(function()
-        SPIN_REMOTE:InvokeServer("Clans",{IndexSlot=1})
+    local ok, result = pcall(function()
+        return SPIN_REMOTE:InvokeServer("Clans", {IndexSlot=1})
     end)
     if not ok then
-        statusLbl.Text="❌ Remote lỗi: "..tostring(err); statusLbl.TextColor3=C.red
-        return false
+        statusLbl.Text="❌ Remote lỗi: "..tostring(result); statusLbl.TextColor3=C.red
+        return false, nil
     end
-    return true
+    local clanName = nil
+    if type(result) == "string" then
+        clanName = result
+    elseif type(result) == "table" then
+        clanName = result.Name or result.Clan or result[1] or nil
+    end
+    return true, clanName
 end
 
 local function showFoundNotif()
@@ -158,23 +133,16 @@ local function startLoop()
 
     task.spawn(function()
         while spinning do
-            -- Spin
-            if not doSpin() then spinning=false; break end
+            local ok, clan = doSpin()
+            if not ok then spinning=false; break end
             spinCount+=1
             countLbl.Text="🔄  Spins: "..spinCount
-            statusLbl.Text="⏳ Chờ kết quả..."; statusLbl.TextColor3=C.yellow
 
-            -- Chờ UI cập nhật
-            task.wait(SPIN_DELAY)
-
-            -- Đọc kết quả
-            local clan = getCurrentClanName()
             if clan then
                 resultLbl.Text="👁  Last: "..clan; resultLbl.TextColor3=C.white
                 statusLbl.Text="🎰 Ra: "..clan; statusLbl.TextColor3=C.cyan
 
-                if string.lower(clan) == string.lower(TARGET_CLAN) then
-                    -- FOUND!
+                if string.lower(clan)==string.lower(TARGET_CLAN) then
                     spinning=false
                     statusLbl.Text="✅ FOUND: "..clan.." sau "..spinCount.." lần!"; statusLbl.TextColor3=C.green
                     setSpinState(false)
@@ -182,17 +150,13 @@ local function startLoop()
                     break
                 end
             else
-                -- Không đọc được -> thử lại, không dừng
-                resultLbl.Text="👁  Last: (đọc lỗi)"; resultLbl.TextColor3=C.yellow
+                resultLbl.Text="👁  Last: (lỗi)"; resultLbl.TextColor3=C.yellow
                 statusLbl.Text="⚠ Không đọc được, thử tiếp..."; statusLbl.TextColor3=C.yellow
             end
 
-            task.wait(0.05)
+            task.wait(SPIN_DELAY)
         end
 
-        if spinning == false and statusLbl.Text:find("dừng") then
-            -- user manually stopped
-        end
         if not statusLbl.Text:find("FOUND") then
             statusLbl.Text="⏹ Dừng sau "..spinCount.." spin"; statusLbl.TextColor3=C.muted
         end
@@ -201,11 +165,8 @@ local function startLoop()
 end
 
 startBtn.MouseButton1Click:Connect(function()
-    if spinning then
-        spinning=false
-    else
-        startLoop()
-    end
+    if spinning then spinning=false
+    else startLoop() end
 end)
 
-print("✅ AutoSpin Clan v2.0 loaded | Target: "..TARGET_CLAN)
+print("✅ AutoSpin Clan v2.1 loaded | Target: "..TARGET_CLAN)
