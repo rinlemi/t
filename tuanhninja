@@ -11,7 +11,7 @@ local player    = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
 local TARGET_CLANS = {"Purple Eyes", "Reincarnation Eyes"}
-local SPIN_DELAY   = 1.5
+local SPIN_DELAY   = 1
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
