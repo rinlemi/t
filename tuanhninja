@@ -3,6 +3,7 @@
 --  Fix: đọc kết quả trực tiếp từ remote thay vì UI
 -- ============================================================
 
+
 local Players   = game:GetService("Players")
 local RS        = game:GetService("ReplicatedStorage")
 local CoreGui   = game:GetService("CoreGui")
