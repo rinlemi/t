@@ -1,22 +1,24 @@
 -- ============================================================
---  AUTO SPIN CLAN  v2.3  -  Tuanh Script
---  Fix: đọc kết quả trực tiếp từ remote
---  NEW: Multi-target | Scrollable log | Auto start 15s
+--  AUTO SPIN CLAN  v3.0  -  Tuanh Script
+--  NEW: Auto rejoin sau 40 spin | Dừng hẳn khi ra target
 -- ============================================================
 
-local Players   = game:GetService("Players")
-local RS        = game:GetService("ReplicatedStorage")
-local CoreGui   = game:GetService("CoreGui")
-local player    = Players.LocalPlayer
+local Players        = game:GetService("Players")
+local RS             = game:GetService("ReplicatedStorage")
+local CoreGui        = game:GetService("CoreGui")
+local TeleportService = game:GetService("TeleportService")
+local player         = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLANS = {"Purple Eyes", "Reincarnation Eyes"}
-local SPIN_DELAY   = 0.9
+local TARGET_CLANS = {"Rinnegan", "Tenseigan", "Uchiha Itachi"}
+local SPIN_DELAY   = 1
+local MAX_SPINS    = 40
+local INDEX_SLOT   = 2
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
 -- ===================== STATE =====================
-local spinning = false
+local spinning  = false
 local spinCount = 0
 
 -- ===================== GUI =====================
@@ -68,7 +70,7 @@ infoCard.BackgroundColor3=C.card; infoCard.BorderSizePixel=0; corner(8,infoCard)
 local ip=Instance.new("UIPadding",infoCard); ip.PaddingLeft=UDim.new(0,10); ip.PaddingTop=UDim.new(0,8)
 
 local targetLbl=lbl(infoCard,"🎯  "..table.concat(TARGET_CLANS," / "),10,C.cyan); targetLbl.Size=UDim2.new(1,-10,0,18); targetLbl.TextTruncate=Enum.TextTruncate.AtEnd
-local countLbl=lbl(infoCard,"🔄  Spins: 0",11,C.yellow); countLbl.Size=UDim2.new(1,-10,0,18); countLbl.Position=UDim2.new(0,0,0,22)
+local countLbl=lbl(infoCard,"🔄  Spins: 0 / "..MAX_SPINS,11,C.yellow); countLbl.Size=UDim2.new(1,-10,0,18); countLbl.Position=UDim2.new(0,0,0,22)
 local resultLbl=lbl(infoCard,"👁  Last: --",11,C.muted); resultLbl.Size=UDim2.new(1,-10,0,18); resultLbl.Position=UDim2.new(0,0,0,44)
 
 local statusCard=Instance.new("Frame",frame); statusCard.Size=UDim2.new(1,-16,0,28); statusCard.Position=UDim2.new(0,8,0,120)
@@ -98,7 +100,7 @@ logScroll.CanvasSize=UDim2.new(0,0,0,0); logScroll.ScrollingDirection=Enum.Scrol
 local logLayout=Instance.new("UIListLayout",logScroll); logLayout.Padding=UDim.new(0,1); logLayout.SortOrder=Enum.SortOrder.LayoutOrder
 local logPad=Instance.new("UIPadding",logScroll); logPad.PaddingLeft=UDim.new(0,6); logPad.PaddingTop=UDim.new(0,4); logPad.PaddingBottom=UDim.new(0,4)
 
-local verLbl=lbl(frame,"AutoSpin v2.3",9,C.muted,Enum.TextXAlignment.Right)
+local verLbl=lbl(frame,"AutoSpin v3.0",9,C.muted,Enum.TextXAlignment.Right)
 verLbl.Size=UDim2.new(1,-10,0,14); verLbl.Position=UDim2.new(0,0,1,-16)
 
 -- ===================== LOG SYSTEM =====================
@@ -110,7 +112,8 @@ local function addLog(text, color)
     row.LayoutOrder = logOrder
     local l = Instance.new("TextLabel", row)
     l.Size = UDim2.new(1,0,1,0); l.BackgroundTransparency=1
-    l.Text = text; l.TextColor3 = color or C.muted; l.TextSize=9
+    l.Text = string.sub(tostring(text), 1, 100)
+    l.TextColor3 = color or C.muted; l.TextSize=9
     l.Font=Enum.Font.Code; l.TextXAlignment=Enum.TextXAlignment.Left
     l.TextTruncate=Enum.TextTruncate.AtEnd
     logScroll.CanvasSize=UDim2.new(0,0,0,logLayout.AbsoluteContentSize.Y+8)
@@ -121,8 +124,7 @@ clearBtn.MouseButton1Click:Connect(function()
     for _,v in ipairs(logScroll:GetChildren()) do
         if v:IsA("Frame") then v:Destroy() end
     end
-    logOrder=0
-    logScroll.CanvasSize=UDim2.new(0,0,0,0)
+    logOrder=0; logScroll.CanvasSize=UDim2.new(0,0,0,0)
 end)
 
 logLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -132,10 +134,10 @@ end)
 -- ===================== SPIN =====================
 local function doSpin()
     local ok, result = pcall(function()
-        return SPIN_REMOTE:InvokeServer("Clans", {IndexSlot=1})
+        return SPIN_REMOTE:InvokeServer("Clans", {IndexSlot=INDEX_SLOT})
     end)
     if not ok then
-        statusLbl.Text="❌ Remote lỗi: "..tostring(result); statusLbl.TextColor3=C.red
+        statusLbl.Text="❌ Remote lỗi"; statusLbl.TextColor3=C.red
         return false, nil
     end
     local clanName = nil
@@ -154,9 +156,17 @@ local function showFoundNotif(clan)
     corner(12,notif); stroke(notif,C.green,2)
     local np=Instance.new("UIPadding",notif); np.PaddingTop=UDim.new(0,10); np.PaddingLeft=UDim.new(0,10); np.PaddingRight=UDim.new(0,10)
     local n1=lbl(notif,"✅  "..string.upper(clan).." ĐÃ RA!",15,C.green,Enum.TextXAlignment.Center); n1.Size=UDim2.new(1,0,0,24)
-    local n2=lbl(notif,"Tổng spin: "..spinCount.."  •  Script đã dừng",11,C.white,Enum.TextXAlignment.Center); n2.Size=UDim2.new(1,0,0,20); n2.Position=UDim2.new(0,0,0,28)
-    local n3=lbl(notif,"(Tự đóng sau 10 giây)",9,C.muted,Enum.TextXAlignment.Center); n3.Size=UDim2.new(1,0,0,14); n3.Position=UDim2.new(0,0,0,52)
-    task.delay(10,function() if notif and notif.Parent then notif:Destroy() end end)
+    local n2=lbl(notif,"Tổng spin: "..spinCount.."  •  Đang ở lại server",11,C.white,Enum.TextXAlignment.Center); n2.Size=UDim2.new(1,0,0,20); n2.Position=UDim2.new(0,0,0,28)
+    local n3=lbl(notif,"🎉 Không rejoin - Giữ clan này!",9,C.yellow,Enum.TextXAlignment.Center); n3.Size=UDim2.new(1,0,0,14); n3.Position=UDim2.new(0,0,0,52)
+end
+
+local function doRejoin()
+    addLog("🔄 Đủ "..MAX_SPINS.." spin - Rejoin...", C.yellow)
+    statusLbl.Text="🔄 Đang rejoin..."; statusLbl.TextColor3=C.yellow
+    task.wait(2)
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+    end)
 end
 
 local function setSpinState(on)
@@ -184,7 +194,7 @@ local function startLoop()
     if spinning then return end
     spinCount=0
     setSpinState(true)
-    addLog("── BẮT ĐẦU SPIN ──", C.accent)
+    addLog("── BẮT ĐẦU SPIN (slot "..INDEX_SLOT..") ──", C.accent)
 
     task.spawn(function()
         while spinning do
@@ -194,7 +204,7 @@ local function startLoop()
                 spinning=false; break
             end
             spinCount+=1
-            countLbl.Text="🔄  Spins: "..spinCount
+            countLbl.Text="🔄  Spins: "..spinCount.." / "..MAX_SPINS
 
             if clan then
                 local isHit = isTarget(clan)
@@ -203,12 +213,13 @@ local function startLoop()
                 statusLbl.Text="🎰 Ra: "..clan; statusLbl.TextColor3=isHit and C.green or C.cyan
 
                 if isHit then
+                    -- DỪNG HẲN, KHÔNG REJOIN
                     spinning=false
-                    addLog("✅ FOUND: "..clan.." sau "..spinCount.." spin!", C.green)
-                    statusLbl.Text="✅ FOUND: "..clan.." sau "..spinCount.." lần!"; statusLbl.TextColor3=C.green
+                    addLog("✅ FOUND: "..clan.." sau "..spinCount.." spin! Ở lại server!", C.green)
+                    statusLbl.Text="✅ FOUND: "..clan.." - Ở lại server!"; statusLbl.TextColor3=C.green
                     setSpinState(false)
                     showFoundNotif(clan)
-                    break
+                    return  -- thoát hoàn toàn, không rejoin
                 end
             else
                 addLog(string.format("[%d] (đọc lỗi)", spinCount), C.yellow)
@@ -216,10 +227,18 @@ local function startLoop()
                 statusLbl.Text="⚠ Không đọc được, thử tiếp..."; statusLbl.TextColor3=C.yellow
             end
 
+            -- Kiểm tra đủ MAX_SPINS thì rejoin
+            if spinCount >= MAX_SPINS then
+                spinning=false
+                setSpinState(false)
+                doRejoin()
+                return
+            end
+
             task.wait(SPIN_DELAY)
         end
 
-        if not statusLbl.Text:find("FOUND") then
+        if not statusLbl.Text:find("FOUND") and not statusLbl.Text:find("rejoin") then
             addLog("── DỪNG sau "..spinCount.." spin ──", C.muted)
             statusLbl.Text="⏹ Dừng sau "..spinCount.." spin"; statusLbl.TextColor3=C.muted
         end
@@ -245,4 +264,4 @@ task.spawn(function()
     end
 end)
 
-print("✅ AutoSpin Clan v2.3 | Target: "..table.concat(TARGET_CLANS," / "))
+print("✅ AutoSpin Clan v3.0 | Target: "..table.concat(TARGET_CLANS," / ").." | MaxSpin: "..MAX_SPINS)
