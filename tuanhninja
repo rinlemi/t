@@ -142,7 +142,7 @@ end)
 -- ===================== SPIN =====================
 local function doSpin()
     local ok, result = pcall(function()
-        return SPIN_REMOTE:InvokeServer("Clans", {IndexSlot=1})
+        return SPIN_REMOTE:InvokeServer("Clans", {IndexSlot=2})
     end)
     if not ok then
         statusLbl.Text="❌ Remote lỗi: "..tostring(result); statusLbl.TextColor3=C.red
