@@ -10,7 +10,7 @@ local TeleportService = game:GetService("TeleportService")
 local player         = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLANS = {"Rinnegan", "Tenseigan", "Uchiha Itachi"}
+local TARGET_CLANS = {"Tenseigan", "Uchiha Itachi"}
 local SPIN_DELAY   = 1
 local MAX_SPINS    = 40
 local INDEX_SLOT   = 2
