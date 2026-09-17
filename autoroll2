@@ -13,7 +13,7 @@ local player          = Players.LocalPlayer
 -- ===================== CONFIG =====================
 local TARGET_CLANS = {"Rinnegan", "Tenseigan"}
 local SPIN_DELAY   = 1      -- delay sau mỗi slot
-local SLOT_GAP     = 0.5   -- delay giữa slot 1 và slot 2
+local SLOT_GAP     = 0.8   -- delay giữa slot 1 và slot 2
 local MAX_SPINS    = 115     -- tổng spin cả 2 slot trước khi rejoin
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
