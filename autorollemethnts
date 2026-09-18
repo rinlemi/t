@@ -11,7 +11,7 @@ local player          = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
 local TARGET_ELEMENTS = {"Blood"}
-local SPIN_DELAY      = 1.5
+local SPIN_DELAY      = 1
 local MAX_SPINS       = 193
 local INDEX_SLOT      = 2
 
