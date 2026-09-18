@@ -12,7 +12,7 @@ local player         = Players.LocalPlayer
 -- ===================== CONFIG =====================
 local TARGET_CLANS = {"Tenseigan", "Uchiha Itachi"}
 local SPIN_DELAY   = 1
-local MAX_SPINS    = 103
+local MAX_SPINS    = 7
 local INDEX_SLOT   = 2
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
