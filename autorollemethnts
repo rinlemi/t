@@ -1,0 +1,246 @@
+-- ============================================================
+--  AUTO SPIN ELEMENTS  v1.0  -  Tuanh Script
+--  Target: Blood | Slot 2 | Max 193 spin rồi rejoin
+-- ============================================================
+
+local Players         = game:GetService("Players")
+local RS              = game:GetService("ReplicatedStorage")
+local CoreGui         = game:GetService("CoreGui")
+local TeleportService = game:GetService("TeleportService")
+local player          = Players.LocalPlayer
+
+-- ===================== CONFIG =====================
+local TARGET_ELEMENTS = {"Blood"}
+local SPIN_DELAY      = 1.5
+local MAX_SPINS       = 193
+local INDEX_SLOT      = 2
+
+local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
+
+-- ===================== STATE =====================
+local spinning  = false
+local spinCount = 0
+
+-- ===================== GUI =====================
+local oldGui = CoreGui:FindFirstChild("TuanhAutoSpinElement")
+if oldGui then oldGui:Destroy() end
+
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = "TuanhAutoSpinElement"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local C = {
+    bg     = Color3.fromRGB(12,12,22),
+    card   = Color3.fromRGB(22,22,42),
+    accent = Color3.fromRGB(200,50,50),
+    green  = Color3.fromRGB(80,255,140),
+    yellow = Color3.fromRGB(255,200,60),
+    red    = Color3.fromRGB(255,80,80),
+    cyan   = Color3.fromRGB(0,200,255),
+    white  = Color3.fromRGB(230,230,245),
+    muted  = Color3.fromRGB(100,100,130),
+    border = Color3.fromRGB(80,20,20),
+    logBg  = Color3.fromRGB(8,8,18),
+}
+local function corner(r,o) Instance.new("UICorner",o).CornerRadius=UDim.new(0,r) end
+local function stroke(o,c,t) local s=Instance.new("UIStroke",o); s.Color=c or C.border; s.Thickness=t or 1 end
+local function lbl(p,text,size,color,xa)
+    local l=Instance.new("TextLabel",p); l.BackgroundTransparency=1
+    l.Text=text; l.TextColor3=color or C.white; l.TextSize=size or 12
+    l.Font=Enum.Font.GothamBold; l.TextXAlignment=xa or Enum.TextXAlignment.Left
+    return l
+end
+
+local frame = Instance.new("Frame",gui)
+frame.Size=UDim2.new(0,320,0,420); frame.Position=UDim2.new(0.5,-160,0.5,-210)
+frame.BackgroundColor3=C.bg; frame.BorderSizePixel=0; frame.Active=true; frame.Draggable=true
+corner(12,frame); stroke(frame,C.accent,1.5)
+
+local tbar=Instance.new("Frame",frame); tbar.Size=UDim2.new(1,0,0,34); tbar.BackgroundColor3=C.accent; tbar.BorderSizePixel=0; corner(12,tbar)
+local tf=Instance.new("Frame",tbar); tf.Size=UDim2.new(1,0,0.5,0); tf.Position=UDim2.new(0,0,0.5,0); tf.BackgroundColor3=C.accent; tf.BorderSizePixel=0
+local tg=Instance.new("UIGradient",tbar); tg.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(220,60,60)),ColorSequenceKeypoint.new(1,Color3.fromRGB(140,20,20))}); tg.Rotation=90
+local tl=lbl(tbar,"🩸  AUTO SPIN ELEMENTS",13,Color3.fromRGB(255,255,255)); tl.Size=UDim2.new(1,-36,1,0); tl.Position=UDim2.new(0,10,0,0)
+local closeBtn=Instance.new("TextButton",tbar); closeBtn.Size=UDim2.new(0,24,0,20); closeBtn.Position=UDim2.new(1,-28,0.5,-10)
+closeBtn.BackgroundColor3=Color3.fromRGB(100,20,20); closeBtn.BorderSizePixel=0; closeBtn.Text="✕"; closeBtn.TextColor3=Color3.fromRGB(255,255,255); closeBtn.TextSize=11; closeBtn.Font=Enum.Font.GothamBold; corner(5,closeBtn)
+closeBtn.MouseButton1Click:Connect(function() spinning=false; gui:Destroy() end)
+
+local infoCard=Instance.new("Frame",frame); infoCard.Size=UDim2.new(1,-16,0,70); infoCard.Position=UDim2.new(0,8,0,42)
+infoCard.BackgroundColor3=C.card; infoCard.BorderSizePixel=0; corner(8,infoCard); stroke(infoCard,C.border,1)
+local ip=Instance.new("UIPadding",infoCard); ip.PaddingLeft=UDim.new(0,10); ip.PaddingTop=UDim.new(0,8)
+
+local targetLbl=lbl(infoCard,"🎯  "..table.concat(TARGET_ELEMENTS," / "),10,C.red); targetLbl.Size=UDim2.new(1,-10,0,18); targetLbl.TextTruncate=Enum.TextTruncate.AtEnd
+local countLbl=lbl(infoCard,"🔄  Spins: 0 / "..MAX_SPINS,11,C.yellow); countLbl.Size=UDim2.new(1,-10,0,18); countLbl.Position=UDim2.new(0,0,0,22)
+local resultLbl=lbl(infoCard,"👁  Last: --",11,C.muted); resultLbl.Size=UDim2.new(1,-10,0,18); resultLbl.Position=UDim2.new(0,0,0,44)
+
+local statusCard=Instance.new("Frame",frame); statusCard.Size=UDim2.new(1,-16,0,28); statusCard.Position=UDim2.new(0,8,0,120)
+statusCard.BackgroundColor3=C.card; statusCard.BorderSizePixel=0; corner(8,statusCard); stroke(statusCard,C.border,1)
+local scp=Instance.new("UIPadding",statusCard); scp.PaddingLeft=UDim.new(0,10); scp.PaddingTop=UDim.new(0,5)
+local statusLbl=lbl(statusCard,"● Sẵn sàng",11,C.muted); statusLbl.Size=UDim2.new(1,-10,0,18)
+
+local startBtn=Instance.new("TextButton",frame); startBtn.Size=UDim2.new(1,-16,0,34); startBtn.Position=UDim2.new(0,8,0,156)
+startBtn.BackgroundColor3=C.green; startBtn.BorderSizePixel=0; startBtn.Text="▶  BẮT ĐẦU SPIN"
+startBtn.TextColor3=Color3.fromRGB(10,10,20); startBtn.TextSize=13; startBtn.Font=Enum.Font.GothamBold
+corner(8,startBtn)
+
+local logTitleFrame=Instance.new("Frame",frame); logTitleFrame.Size=UDim2.new(1,-16,0,20); logTitleFrame.Position=UDim2.new(0,8,0,198)
+logTitleFrame.BackgroundTransparency=1; logTitleFrame.BorderSizePixel=0
+local logTitle=lbl(logTitleFrame,"📋  LOG",9,C.muted); logTitle.Size=UDim2.new(0.5,0,1,0)
+local clearBtn=Instance.new("TextButton",logTitleFrame); clearBtn.Size=UDim2.new(0,50,0,16); clearBtn.Position=UDim2.new(1,-50,0,2)
+clearBtn.BackgroundColor3=C.card; clearBtn.BorderSizePixel=0; clearBtn.Text="Clear"; clearBtn.TextColor3=C.muted; clearBtn.TextSize=9; clearBtn.Font=Enum.Font.Gotham; corner(4,clearBtn)
+
+local logFrame=Instance.new("Frame",frame); logFrame.Size=UDim2.new(1,-16,0,185); logFrame.Position=UDim2.new(0,8,0,220)
+logFrame.BackgroundColor3=C.logBg; logFrame.BorderSizePixel=0; corner(8,logFrame); stroke(logFrame,C.border,1)
+
+local logScroll=Instance.new("ScrollingFrame",logFrame); logScroll.Size=UDim2.new(1,0,1,0)
+logScroll.BackgroundTransparency=1; logScroll.BorderSizePixel=0
+logScroll.ScrollBarThickness=3; logScroll.ScrollBarImageColor3=C.accent
+logScroll.CanvasSize=UDim2.new(0,0,0,0); logScroll.ScrollingDirection=Enum.ScrollingDirection.Y
+
+local logLayout=Instance.new("UIListLayout",logScroll); logLayout.Padding=UDim.new(0,1); logLayout.SortOrder=Enum.SortOrder.LayoutOrder
+local logPad=Instance.new("UIPadding",logScroll); logPad.PaddingLeft=UDim.new(0,6); logPad.PaddingTop=UDim.new(0,4); logPad.PaddingBottom=UDim.new(0,4)
+
+local verLbl=lbl(frame,"AutoSpinElement v1.0",9,C.muted,Enum.TextXAlignment.Right)
+verLbl.Size=UDim2.new(1,-10,0,14); verLbl.Position=UDim2.new(0,0,1,-16)
+
+-- ===================== LOG =====================
+local logOrder = 0
+local function addLog(text, color)
+    logOrder += 1
+    local row = Instance.new("Frame", logScroll)
+    row.Size = UDim2.new(1,-6,0,16); row.BackgroundTransparency=1; row.BorderSizePixel=0
+    row.LayoutOrder = logOrder
+    local l = Instance.new("TextLabel", row)
+    l.Size = UDim2.new(1,0,1,0); l.BackgroundTransparency=1
+    l.Text = string.sub(tostring(text), 1, 100)
+    l.TextColor3 = color or C.muted; l.TextSize=9
+    l.Font=Enum.Font.Code; l.TextXAlignment=Enum.TextXAlignment.Left
+    l.TextTruncate=Enum.TextTruncate.AtEnd
+    logScroll.CanvasSize=UDim2.new(0,0,0,logLayout.AbsoluteContentSize.Y+8)
+    logScroll.CanvasPosition=Vector2.new(0, math.max(0, logLayout.AbsoluteContentSize.Y-185))
+end
+
+clearBtn.MouseButton1Click:Connect(function()
+    for _,v in ipairs(logScroll:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    logOrder=0; logScroll.CanvasSize=UDim2.new(0,0,0,0)
+end)
+
+logLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    logScroll.CanvasSize=UDim2.new(0,0,0,logLayout.AbsoluteContentSize.Y+8)
+end)
+
+-- ===================== HELPERS =====================
+local function isTarget(elem)
+    for _, target in ipairs(TARGET_ELEMENTS) do
+        if string.lower(tostring(elem))==string.lower(target) then return true end
+    end
+    return false
+end
+
+local function doSpin()
+    local ok, result = pcall(function()
+        return SPIN_REMOTE:InvokeServer("Elements", {IndexSlot=INDEX_SLOT})
+    end)
+    if not ok then return nil end
+    if type(result) == "string" then return result end
+    if type(result) == "table" then return result.Name or result.Element or result[1] or nil end
+    return nil
+end
+
+local function showFoundNotif(elem)
+    local notif=Instance.new("Frame",gui)
+    notif.Size=UDim2.new(0,320,0,80); notif.Position=UDim2.new(0.5,-160,0,16)
+    notif.BackgroundColor3=Color3.fromRGB(35,10,10); notif.BorderSizePixel=0
+    corner(12,notif); stroke(notif,C.red,2)
+    local np=Instance.new("UIPadding",notif); np.PaddingTop=UDim.new(0,10); np.PaddingLeft=UDim.new(0,10); np.PaddingRight=UDim.new(0,10)
+    local n1=lbl(notif,"🩸  "..string.upper(elem).." ĐÃ RA!",15,C.red,Enum.TextXAlignment.Center); n1.Size=UDim2.new(1,0,0,24)
+    local n2=lbl(notif,"Tổng spin: "..spinCount.."  •  Đang ở lại server",11,C.white,Enum.TextXAlignment.Center); n2.Size=UDim2.new(1,0,0,20); n2.Position=UDim2.new(0,0,0,28)
+    local n3=lbl(notif,"🎉 Không rejoin - Giữ element này!",9,C.yellow,Enum.TextXAlignment.Center); n3.Size=UDim2.new(1,0,0,14); n3.Position=UDim2.new(0,0,0,52)
+end
+
+local function doRejoin()
+    addLog("🔄 Đủ "..MAX_SPINS.." spin - Rejoin...", C.yellow)
+    statusLbl.Text="🔄 Đang rejoin..."; statusLbl.TextColor3=C.yellow
+    task.wait(2)
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+    end)
+end
+
+local function setSpinState(on)
+    spinning=on
+    if on then
+        startBtn.Text="⏹  DỪNG SPIN"; startBtn.BackgroundColor3=C.red; startBtn.TextColor3=Color3.fromRGB(255,255,255)
+        statusLbl.Text="🔄 Đang spin..."; statusLbl.TextColor3=C.yellow
+    else
+        startBtn.Text="▶  BẮT ĐẦU SPIN"; startBtn.BackgroundColor3=C.green; startBtn.TextColor3=Color3.fromRGB(10,10,20)
+    end
+end
+
+-- ===================== MAIN LOOP =====================
+local function startLoop()
+    if spinning then return end
+    spinCount=0
+    setSpinState(true)
+    addLog("── BẮT ĐẦU SPIN ELEMENTS (slot "..INDEX_SLOT..") ──", C.accent)
+
+    task.spawn(function()
+        while spinning do
+            local elem = doSpin()
+            spinCount+=1
+            countLbl.Text="🔄  Spins: "..spinCount.." / "..MAX_SPINS
+
+            if elem then
+                local isHit = isTarget(elem)
+                addLog(string.format("[%d] %s", spinCount, elem), isHit and C.red or C.muted)
+                resultLbl.Text="👁  Last: "..elem; resultLbl.TextColor3=isHit and C.red or C.white
+                statusLbl.Text="🎰 Ra: "..elem; statusLbl.TextColor3=isHit and C.red or C.cyan
+
+                if isHit then
+                    spinning=false
+                    addLog("🩸 FOUND: "..elem.." sau "..spinCount.." spin! Ở lại!", C.red)
+                    statusLbl.Text="🩸 FOUND: "..elem.." - Ở lại!"; statusLbl.TextColor3=C.red
+                    setSpinState(false)
+                    showFoundNotif(elem)
+                    return
+                end
+            else
+                addLog(string.format("[%d] (lỗi)", spinCount), C.yellow)
+                resultLbl.Text="👁  Last: (lỗi)"; resultLbl.TextColor3=C.yellow
+                statusLbl.Text="⚠ Lỗi đọc, thử tiếp..."; statusLbl.TextColor3=C.yellow
+            end
+
+            if spinCount >= MAX_SPINS then
+                spinning=false; setSpinState(false); doRejoin(); return
+            end
+
+            task.wait(SPIN_DELAY)
+        end
+
+        if not statusLbl.Text:find("FOUND") and not statusLbl.Text:find("rejoin") then
+            addLog("── DỪNG sau "..spinCount.." spin ──", C.muted)
+            statusLbl.Text="⏹ Dừng sau "..spinCount.." spin"; statusLbl.TextColor3=C.muted
+        end
+        setSpinState(false)
+    end)
+end
+
+startBtn.MouseButton1Click:Connect(function()
+    if spinning then spinning=false
+    else startLoop() end
+end)
+
+-- ===================== AUTO START 15S =====================
+task.spawn(function()
+    for i = 15, 1, -1 do
+        if spinning then return end
+        statusLbl.Text="⏳ Tự động bắt đầu sau "..i.."s..."; statusLbl.TextColor3=C.yellow
+        task.wait(1)
+    end
+    if not spinning then
+        addLog("── AUTO START sau 15s ──", C.accent)
+        startLoop()
+    end
+end)
+
+print("✅ AutoSpinElement v1.0 | Target: "..table.concat(TARGET_ELEMENTS," / ").." | MaxSpin: "..MAX_SPINS)
