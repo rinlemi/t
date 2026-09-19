@@ -1,133 +1,213 @@
--- ===== AUTO ROLL CLAN — DỪNG KHI SUPREME =====
+-- ═══════════════════════════════════════════════════════
+-- 🎰 AUTO ROLL CLAN - SUPREME HUNTER
+-- Tối ưu: chống race condition, có log, thông báo, âm thanh
+-- ═══════════════════════════════════════════════════════
+
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local LP = Players.LocalPlayer
+local StarterGui = game:GetService("StarterGui")
 
+-- ===== REMOTE =====
 local SF = RS.Communication.ServerAndClient.Signals.SignalFunction.Function
 local SE = RS.Communication.ServerAndClient.Signals.SignalEvent.Event
 
+-- ===== CẤU HÌNH =====
 local SUPREME_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
-    ["Rengoku"] = true,  -- Thêm nếu cần
-    ["Aori"] = true,  -- Thêm nếu cần
+    ["Rengoku"] = true,
+    ["Hagiwara"] = true,
 }
 
--- Xóa UI cũ
+-- Để test: thêm clan Common vào đây
+-- ["Hagiwara"] = true,
+-- ["Toka"] = true,
+
+local TIMING = {
+    BEFORE_COMPLETE = 1.0,   -- Đợi trước khi gửi ClanSpinComplete
+    AFTER_COMPLETE = 0.3,    -- Đợi sau khi gửi complete
+    MAX_WAIT_UPDATE = 5,     -- Timeout chờ data update
+    BETWEEN_ROLLS = 0.2,     -- Nghỉ giữa các lần quay
+}
+
+-- ===== XÓA UI CŨ =====
 local old = LP.PlayerGui:FindFirstChild("AutoRollClanUI")
 if old then old:Destroy() end
 
--- ===== UI (giữ nguyên như trước) =====
+-- ═══════════════════════════════════════════════════════
+-- UI
+-- ═══════════════════════════════════════════════════════
+
 local SG = Instance.new("ScreenGui")
 SG.Name = "AutoRollClanUI"
 SG.ResetOnSpawn = false
 SG.Parent = LP.PlayerGui
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 300, 0, 340)
-Main.Position = UDim2.new(0, 20, 0.5, -170)
-Main.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Main.Size = UDim2.new(0, 320, 0, 380)
+Main.Position = UDim2.new(0, 20, 0.5, -190)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Draggable = true
 Main.Parent = SG
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
+-- Stroke viền
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(180, 40, 180)
+stroke.Thickness = 2
+stroke.Parent = Main
+
+-- Title
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 45)
+Title.Size = UDim2.new(1, 0, 0, 50)
 Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 Title.BorderSizePixel = 0
-Title.Text = "🎰 AUTO SUPREME"
+Title.Text = "🎰 SUPREME HUNTER"
 Title.TextColor3 = Color3.fromRGB(255,255,255)
 Title.TextScaled = true
 Title.Font = Enum.Font.GothamBold
 Title.Parent = Main
-Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 12)
 
+-- Status
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -20, 0, 30)
-Status.Position = UDim2.new(0, 10, 0, 55)
-Status.BackgroundTransparency = 1
-Status.Text = "Chờ bắt đầu..."
+Status.Size = UDim2.new(1, -20, 0, 35)
+Status.Position = UDim2.new(0, 10, 0, 60)
+Status.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+Status.BorderSizePixel = 0
+Status.Text = "Sẵn sàng"
 Status.TextColor3 = Color3.fromRGB(255,255,255)
 Status.TextScaled = true
 Status.Font = Enum.Font.Gotham
-Status.TextXAlignment = Enum.TextXAlignment.Left
 Status.Parent = Main
+Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 6)
 
+-- Rolls
 local RollsLbl = Instance.new("TextLabel")
-RollsLbl.Size = UDim2.new(1, -20, 0, 25)
-RollsLbl.Position = UDim2.new(0, 10, 0, 85)
-RollsLbl.BackgroundTransparency = 1
-RollsLbl.Text = "Đã quay: 0 lần"
+RollsLbl.Size = UDim2.new(0.5, -15, 0, 35)
+RollsLbl.Position = UDim2.new(0, 10, 0, 105)
+RollsLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+RollsLbl.BorderSizePixel = 0
+RollsLbl.Text = "Quay: 0"
 RollsLbl.TextColor3 = Color3.fromRGB(200,200,200)
 RollsLbl.TextScaled = true
-RollsLbl.Font = Enum.Font.Gotham
-RollsLbl.TextXAlignment = Enum.TextXAlignment.Left
+RollsLbl.Font = Enum.Font.GothamBold
 RollsLbl.Parent = Main
+Instance.new("UICorner", RollsLbl).CornerRadius = UDim.new(0, 6)
 
+-- Spins
+local SpinsLbl = Instance.new("TextLabel")
+SpinsLbl.Size = UDim2.new(0.5, -15, 0, 35)
+SpinsLbl.Position = UDim2.new(0.5, 5, 0, 105)
+SpinsLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+SpinsLbl.BorderSizePixel = 0
+SpinsLbl.Text = "Spins: ---"
+SpinsLbl.TextColor3 = Color3.fromRGB(255,220,100)
+SpinsLbl.TextScaled = true
+SpinsLbl.Font = Enum.Font.GothamBold
+SpinsLbl.Parent = Main
+Instance.new("UICorner", SpinsLbl).CornerRadius = UDim.new(0, 6)
+
+-- Clan hiện tại
 local ClanLbl = Instance.new("TextLabel")
-ClanLbl.Size = UDim2.new(1, -20, 0, 30)
-ClanLbl.Position = UDim2.new(0, 10, 0, 115)
-ClanLbl.BackgroundTransparency = 1
+ClanLbl.Size = UDim2.new(1, -20, 0, 40)
+ClanLbl.Position = UDim2.new(0, 10, 0, 150)
+ClanLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+ClanLbl.BorderSizePixel = 0
 ClanLbl.Text = "Clan: ---"
 ClanLbl.TextColor3 = Color3.fromRGB(100,255,100)
 ClanLbl.TextScaled = true
 ClanLbl.Font = Enum.Font.GothamBold
-ClanLbl.TextXAlignment = Enum.TextXAlignment.Left
 ClanLbl.Parent = Main
+Instance.new("UICorner", ClanLbl).CornerRadius = UDim.new(0, 6)
 
-local SpinsLbl = Instance.new("TextLabel")
-SpinsLbl.Size = UDim2.new(1, -20, 0, 25)
-SpinsLbl.Position = UDim2.new(0, 10, 0, 150)
-SpinsLbl.BackgroundTransparency = 1
-SpinsLbl.Text = "Spins còn: ---"
-SpinsLbl.TextColor3 = Color3.fromRGB(255,220,100)
-SpinsLbl.TextScaled = true
-SpinsLbl.Font = Enum.Font.Gotham
-SpinsLbl.TextXAlignment = Enum.TextXAlignment.Left
-SpinsLbl.Parent = Main
+-- Log box
+local LogBox = Instance.new("ScrollingFrame")
+LogBox.Size = UDim2.new(1, -20, 0, 80)
+LogBox.Position = UDim2.new(0, 10, 0, 200)
+LogBox.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+LogBox.BorderSizePixel = 0
+LogBox.ScrollBarThickness = 4
+LogBox.CanvasSize = UDim2.new(0, 0, 0, 0)
+LogBox.AutomaticCanvasSize = Enum.AutomaticSize.Y
+LogBox.Parent = Main
+Instance.new("UICorner", LogBox).CornerRadius = UDim.new(0, 6)
 
-local InfoLbl = Instance.new("TextLabel")
-InfoLbl.Size = UDim2.new(1, -20, 0, 30)
-InfoLbl.Position = UDim2.new(0, 10, 0, 180)
-InfoLbl.BackgroundTransparency = 1
-InfoLbl.Text = "🎯 Target: SUPREME (0.025%)"
-InfoLbl.TextColor3 = Color3.fromRGB(255, 100, 200)
-InfoLbl.TextScaled = true
-InfoLbl.Font = Enum.Font.Gotham
-InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
-InfoLbl.Parent = Main
+local LogLayout = Instance.new("UIListLayout")
+LogLayout.Padding = UDim.new(0, 3)
+LogLayout.Parent = LogBox
 
+local function log(text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 16)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "▸ " .. text
+    lbl.TextColor3 = color or Color3.fromRGB(200, 200, 200)
+    lbl.TextScaled = true
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Font = Enum.Font.Code
+    lbl.Parent = LogBox
+    return lbl
+end
+
+-- Nút Start
 local StartBtn = Instance.new("TextButton")
-StartBtn.Size = UDim2.new(1, -20, 0, 45)
-StartBtn.Position = UDim2.new(0, 10, 0, 220)
+StartBtn.Size = UDim2.new(1, -20, 0, 50)
+StartBtn.Position = UDim2.new(0, 10, 0, 290)
 StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 StartBtn.BorderSizePixel = 0
-StartBtn.Text = "▶️ BẮT ĐẦU"
+StartBtn.Text = "▶️ BẮT ĐẦU SĂN SUPREME"
 StartBtn.TextColor3 = Color3.fromRGB(255,255,255)
 StartBtn.TextScaled = true
 StartBtn.Font = Enum.Font.GothamBold
 StartBtn.Parent = Main
-Instance.new("UICorner", StartBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", StartBtn).CornerRadius = UDim.new(0, 8)
 
+-- Nút đóng
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseBtn.Position = UDim2.new(1, -30, 0, 5)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -40, 0, 10)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
 CloseBtn.BorderSizePixel = 0
-CloseBtn.Text = "X"
+CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
 CloseBtn.TextScaled = true
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = Main
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 15)
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
--- ===== HELPERS =====
+-- Nút thu nhỏ
+local MiniBtn = Instance.new("TextButton")
+MiniBtn.Size = UDim2.new(0, 30, 0, 30)
+MiniBtn.Position = UDim2.new(1, -75, 0, 10)
+MiniBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+MiniBtn.BorderSizePixel = 0
+MiniBtn.Text = "—"
+MiniBtn.TextColor3 = Color3.fromRGB(255,255,255)
+MiniBtn.TextScaled = true
+MiniBtn.Font = Enum.Font.GothamBold
+MiniBtn.Parent = Main
+Instance.new("UICorner", MiniBtn).CornerRadius = UDim.new(0, 15)
+
+local minimized = false
+MiniBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Main.Size = minimized and UDim2.new(0, 320, 0, 60) or UDim2.new(0, 320, 0, 380)
+end)
+
+-- ═══════════════════════════════════════════════════════
+-- HELPERS
+-- ═══════════════════════════════════════════════════════
+
 local function getSlot()
-    local data = RS:FindFirstChild("Player_Service"):FindFirstChild("Data"):FindFirstChild(LP.Name)
+    local data = RS:FindFirstChild("Player_Service")
+        :FindFirstChild("Data")
+        :FindFirstChild(LP.Name)
     return data.slots["Slot" .. data.slotEquipped.Value]
 end
 
@@ -145,81 +225,138 @@ local function isSupreme(name)
     return SUPREME_CLANS[name] == true
 end
 
--- ===== AUTO ROLL =====
+-- Chờ data update (chống race condition)
+local function waitForUpdate(oldClan, oldSpins, timeout)
+    timeout = timeout or TIMING.MAX_WAIT_UPDATE
+    local t = tick() + timeout
+    while tick() < t do
+        task.wait(0.05)
+        if getClan() ~= oldClan and getSpins() < oldSpins then
+            return true
+        end
+    end
+    return false
+end
+
+-- Thông báo
+local function notify(title, text)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Duration = 10,
+        })
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════
+-- AUTO ROLL
+-- ═══════════════════════════════════════════════════════
+
 local isRolling = false
 
 local function autoRoll()
     isRolling = true
     local count = 0
+    local startTime = tick()
+
+    log("🚀 Bắt đầu săn SUPREME", Color3.fromRGB(255, 100, 200))
 
     while isRolling do
         local spins = getSpins()
-        SpinsLbl.Text = "Spins còn: " .. spins
+        SpinsLbl.Text = "Spins: " .. spins
 
         if spins <= 0 then
-            Status.Text = "❌ Hết spins! Đã quay " .. count .. " lần."
+            Status.Text = "❌ Hết spins"
             Status.TextColor3 = Color3.fromRGB(255,100,100)
+            log("❌ Hết spins sau " .. count .. " lần", Color3.fromRGB(255, 100, 100))
             break
         end
 
         Status.Text = "🔄 Đang quay..."
         Status.TextColor3 = Color3.fromRGB(255,220,100)
 
+        local clanBefore = getClan()
+        local spinsBefore = getSpins()
+
+        -- Gửi ClanSpin
         local ok = pcall(function() SF:InvokeServer("ClanSpin") end)
         if not ok then
-            Status.Text = "❌ Lỗi gửi ClanSpin"
+            log("❌ Lỗi ClanSpin", Color3.fromRGB(255, 80, 80))
             break
         end
 
-        task.wait(1)
+        -- Đợi rồi gửi Complete
+        task.wait(TIMING.BEFORE_COMPLETE)
         pcall(function() SE:FireServer("ClanSpinComplete") end)
+        task.wait(TIMING.AFTER_COMPLETE)
 
-        local clanBefore = getClan()
-        local timeout = tick() + 5
-        while tick() < timeout do
-            task.wait(0.1)
-            if getClan() ~= clanBefore then break end
-        end
+        -- Chờ data update
+        local updated = waitForUpdate(clanBefore, spinsBefore)
 
         count = count + 1
-        RollsLbl.Text = "Đã quay: " .. count .. " lần"
+        RollsLbl.Text = "Quay: " .. count
 
         local clan = getClan()
-        if clan then ClanLbl.Text = "Clan: " .. clan end
+        local newSpins = getSpins()
 
+        if clan then
+            ClanLbl.Text = "Clan: " .. clan
+        end
+        SpinsLbl.Text = "Spins: " .. newSpins
+
+        -- Log kết quả
+        if clan and clan ~= clanBefore then
+            log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
+        end
+
+        -- Check Supreme
         if clan and isSupreme(clan) then
             Status.Text = "🎉 SUPREME: " .. clan
             Status.TextColor3 = Color3.fromRGB(255, 215, 0)
             ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "🎉 SUPREME FOUND!",
-                Text = clan .. " sau " .. count .. " lần",
-                Duration = 10,
-            })
+            log("🎉🎉 SUPREME: " .. clan, Color3.fromRGB(255, 215, 0))
+
+            notify("🎉 SUPREME FOUND!", clan .. " sau " .. count .. " lần (" .. math.floor(tick() - startTime) .. "s)")
             break
         end
 
-        task.wait(0.3)
+        task.wait(TIMING.BETWEEN_ROLLS)
     end
 
     isRolling = false
-    StartBtn.Text = "▶️ BẮT ĐẦU"
+    StartBtn.Text = "▶️ BẮT ĐẦU SĂN SUPREME"
     StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 end
+
+-- ═══════════════════════════════════════════════════════
+-- NÚT START/STOP
+-- ═══════════════════════════════════════════════════════
 
 StartBtn.MouseButton1Click:Connect(function()
     if isRolling then
         isRolling = false
+        log("⏹️ Dừng thủ công", Color3.fromRGB(200, 200, 200))
     else
-        StartBtn.Text = "⏹️ DỪNG"
+        StartBtn.Text = "⏹️ DỪNG LẠI"
         StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
         task.spawn(autoRoll)
     end
 end)
 
-Status.Text = "Sẵn sàng. Bấm BẮT ĐẦU."
-ClanLbl.Text = "Clan: " .. (getClan() or "---")
-SpinsLbl.Text = "Spins còn: " .. getSpins()
+-- ═══════════════════════════════════════════════════════
+-- INIT
+-- ═══════════════════════════════════════════════════════
 
-print("✅ UI Auto Supreme đã load!")
-print("🎯 Target: " .. table.concat((function() local t={} for k in pairs(SUPREME_CLANS) do table.insert(t,k) end return t end)(), ", "))
+Status.Text = "Sẵn sàng săn SUPREME"
+ClanLbl.Text = "Clan: " .. (getClan() or "---")
+SpinsLbl.Text = "Spins: " .. getSpins()
+
+log("✅ Script đã load", Color3.fromRGB(100, 255, 100))
+log("🎯 Target: " .. table.concat((function()
+    local t = {}
+    for k in pairs(SUPREME_CLANS) do table.insert(t, k) end
+    return t
+end)(), ", "), Color3.fromRGB(255, 100, 200))
+
+print("✅ AUTO SUPREME HUNTER đã load!")
