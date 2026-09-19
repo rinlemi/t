@@ -1,0 +1,373 @@
+-- ═══════════════════════════════════════════════════════
+-- 🎰 AUTO SUPREME HUNTER — FULL AUTO (1 CLICK)
+-- ═══════════════════════════════════════════════════════
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local LP = Players.LocalPlayer
+local PG = LP.PlayerGui
+local StarterGui = game:GetService("StarterGui")
+
+-- REMOTE
+local SF = RS.Communication.ServerAndClient.Signals.SignalFunction.Function
+local SE = RS.Communication.ServerAndClient.Signals.SignalEvent.Event
+
+-- ⚙️ CẤU HÌNH
+local CODE_1 = "EVILARTSPINS"
+local CODE_2 = "SORRYFORSHUTDOWN"
+local ROLL_DELAY = 1.0
+
+local SUPREME_CLANS = {
+    ["Kamado"] = true,
+    ["Soyama"] = true,
+    ["Uzui"] = true,
+    ["Rengoku"] = true,
+}
+
+-- XÓA UI CŨ
+local old = PG:FindFirstChild("AutoRollClanUI")
+if old then old:Destroy() end
+
+-- ═══════════════════════════════════════════════════════
+-- UI
+-- ═══════════════════════════════════════════════════════
+
+local SG = Instance.new("ScreenGui")
+SG.Name = "AutoRollClanUI"
+SG.ResetOnSpawn = false
+SG.Parent = PG
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 320, 0, 400)
+Main.Position = UDim2.new(0, 20, 0.5, -200)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Main.Parent = SG
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 45)
+Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+Title.BorderSizePixel = 0
+Title.Text = "🎰 AUTO SUPREME"
+Title.TextColor3 = Color3.fromRGB(255,255,255)
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.Parent = Main
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
+
+-- Username + Copy
+local UserLabel = Instance.new("TextLabel")
+UserLabel.Size = UDim2.new(0.6, -15, 0, 32)
+UserLabel.Position = UDim2.new(0, 10, 0, 55)
+UserLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+UserLabel.BorderSizePixel = 0
+UserLabel.Text = "👤 " .. LP.Name
+UserLabel.TextColor3 = Color3.fromRGB(100, 220, 255)
+UserLabel.TextScaled = true
+UserLabel.Font = Enum.Font.GothamBold
+UserLabel.TextXAlignment = Enum.TextXAlignment.Left
+UserLabel.Parent = Main
+Instance.new("UICorner", UserLabel).CornerRadius = UDim.new(0, 6)
+
+local CopyBtn = Instance.new("TextButton")
+CopyBtn.Size = UDim2.new(0.4, -15, 0, 32)
+CopyBtn.Position = UDim2.new(0.6, 5, 0, 55)
+CopyBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 120)
+CopyBtn.BorderSizePixel = 0
+CopyBtn.Text = "📋 COPY"
+CopyBtn.TextColor3 = Color3.fromRGB(255,255,255)
+CopyBtn.TextScaled = true
+CopyBtn.Font = Enum.Font.GothamBold
+CopyBtn.Parent = Main
+Instance.new("UICorner", CopyBtn).CornerRadius = UDim.new(0, 6)
+
+CopyBtn.MouseButton1Click:Connect(function()
+    local ok = false
+    if setclipboard then pcall(function() setclipboard(LP.Name); ok = true end) end
+    if not ok and toclipboard then pcall(function() toclipboard(LP.Name); ok = true end) end
+    CopyBtn.Text = ok and "✅ OK" or "❌ LỖI"
+    task.wait(1.5)
+    CopyBtn.Text = "📋 COPY"
+end)
+
+-- Status
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -20, 0, 30)
+Status.Position = UDim2.new(0, 10, 0, 95)
+Status.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+Status.BorderSizePixel = 0
+Status.Text = "Đang khởi tạo..."
+Status.TextColor3 = Color3.fromRGB(255,255,255)
+Status.TextScaled = true
+Status.Font = Enum.Font.Gotham
+Status.Parent = Main
+Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 6)
+
+-- Rolls + Spins
+local RollsLbl = Instance.new("TextLabel")
+RollsLbl.Size = UDim2.new(0.5, -15, 0, 30)
+RollsLbl.Position = UDim2.new(0, 10, 0, 135)
+RollsLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+RollsLbl.BorderSizePixel = 0
+RollsLbl.Text = "Quay: 0"
+RollsLbl.TextColor3 = Color3.fromRGB(200,200,200)
+RollsLbl.TextScaled = true
+RollsLbl.Font = Enum.Font.GothamBold
+RollsLbl.Parent = Main
+Instance.new("UICorner", RollsLbl).CornerRadius = UDim.new(0, 6)
+
+local SpinsLbl = Instance.new("TextLabel")
+SpinsLbl.Size = UDim2.new(0.5, -15, 0, 30)
+SpinsLbl.Position = UDim2.new(0.5, 5, 0, 135)
+SpinsLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+SpinsLbl.BorderSizePixel = 0
+SpinsLbl.Text = "Spins: ---"
+SpinsLbl.TextColor3 = Color3.fromRGB(255,220,100)
+SpinsLbl.TextScaled = true
+SpinsLbl.Font = Enum.Font.GothamBold
+SpinsLbl.Parent = Main
+Instance.new("UICorner", SpinsLbl).CornerRadius = UDim.new(0, 6)
+
+-- Clan
+local ClanLbl = Instance.new("TextLabel")
+ClanLbl.Size = UDim2.new(1, -20, 0, 35)
+ClanLbl.Position = UDim2.new(0, 10, 0, 175)
+ClanLbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+ClanLbl.BorderSizePixel = 0
+ClanLbl.Text = "Clan: ---"
+ClanLbl.TextColor3 = Color3.fromRGB(100,255,100)
+ClanLbl.TextScaled = true
+ClanLbl.Font = Enum.Font.GothamBold
+ClanLbl.Parent = Main
+Instance.new("UICorner", ClanLbl).CornerRadius = UDim.new(0, 6)
+
+-- Log box
+local LogBox = Instance.new("ScrollingFrame")
+LogBox.Size = UDim2.new(1, -20, 0, 80)
+LogBox.Position = UDim2.new(0, 10, 0, 220)
+LogBox.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+LogBox.BorderSizePixel = 0
+LogBox.ScrollBarThickness = 4
+LogBox.CanvasSize = UDim2.new(0, 0, 10, 0)
+LogBox.Parent = Main
+Instance.new("UICorner", LogBox).CornerRadius = UDim.new(0, 6)
+
+local LogLayout = Instance.new("UIListLayout")
+LogLayout.Padding = UDim.new(0, 3)
+LogLayout.Parent = LogBox
+
+local function log(text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 14)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "▸ " .. text
+    lbl.TextColor3 = color or Color3.fromRGB(200, 200, 200)
+    lbl.TextScaled = true
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Font = Enum.Font.Code
+    lbl.Parent = LogBox
+end
+
+-- Start
+local StartBtn = Instance.new("TextButton")
+StartBtn.Size = UDim2.new(1, -20, 0, 45)
+StartBtn.Position = UDim2.new(0, 10, 0, 310)
+StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+StartBtn.BorderSizePixel = 0
+StartBtn.Text = "▶️ BẮT ĐẦU"
+StartBtn.TextColor3 = Color3.fromRGB(255,255,255)
+StartBtn.TextScaled = true
+StartBtn.Font = Enum.Font.GothamBold
+StartBtn.Parent = Main
+Instance.new("UICorner", StartBtn).CornerRadius = UDim.new(0, 6)
+
+-- Close
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.Position = UDim2.new(1, -30, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
+CloseBtn.TextScaled = true
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = Main
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
+CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
+
+-- ═══════════════════════════════════════════════════════
+-- HELPERS
+-- ═══════════════════════════════════════════════════════
+
+local function getSlot()
+    local data = RS:FindFirstChild("Player_Service"):FindFirstChild("Data"):FindFirstChild(LP.Name)
+    if not data then return nil end
+    local equipped = data.slotEquipped and data.slotEquipped.Value or 1
+    return data.slots["Slot" .. equipped]
+end
+
+local function getClan()
+    local s = getSlot()
+    return s and s.Clan and s.Clan.Value or nil
+end
+
+local function getSpins()
+    local s = getSlot()
+    return s and s.Spinning and s.Spinning.Spins.Value or 0
+end
+
+local function isSupreme(name)
+    return SUPREME_CLANS[name] == true
+end
+
+-- ═══════════════════════════════════════════════════════
+-- AUTO ROLL
+-- ═══════════════════════════════════════════════════════
+
+local isRolling = false
+
+local function autoRoll()
+    isRolling = true
+    local count = 0
+
+    log("🚀 Bắt đầu auto roll", Color3.fromRGB(255, 100, 200))
+
+    while isRolling do
+        local spins = getSpins()
+        SpinsLbl.Text = "Spins: " .. spins
+
+        if spins <= 0 then
+            Status.Text = "❌ Hết spins"
+            Status.TextColor3 = Color3.fromRGB(255,100,100)
+            log("❌ Hết spins sau " .. count .. " lần", Color3.fromRGB(255, 100, 100))
+            break
+        end
+
+        Status.Text = "🔄 Đang quay..."
+        Status.TextColor3 = Color3.fromRGB(255,220,100)
+
+        local clanBefore = getClan()
+        local spinsBefore = getSpins()
+
+        local ok = pcall(function() SF:InvokeServer("ClanSpin") end)
+        if not ok then
+            log("❌ Lỗi ClanSpin", Color3.fromRGB(255, 80, 80))
+            break
+        end
+
+        task.wait(ROLL_DELAY)
+        pcall(function() SE:FireServer("ClanSpinComplete") end)
+
+        local timeout = tick() + 5
+        while tick() < timeout do
+            task.wait(0.05)
+            if getClan() ~= clanBefore and getSpins() < spinsBefore then
+                break
+            end
+        end
+
+        count = count + 1
+        RollsLbl.Text = "Quay: " .. count
+
+        local clan = getClan()
+        local newSpins = getSpins()
+        ClanLbl.Text = "Clan: " .. (clan or "---")
+        SpinsLbl.Text = "Spins: " .. newSpins
+
+        if clan and clan ~= clanBefore then
+            log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
+        end
+
+        if clan and isSupreme(clan) then
+            Status.Text = "🎉 SUPREME: " .. clan
+            Status.TextColor3 = Color3.fromRGB(255, 215, 0)
+            ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+            log("🎉🎉 SUPREME: " .. clan, Color3.fromRGB(255, 215, 0))
+            pcall(function()
+                StarterGui:SetCore("SendNotification", {
+                    Title = "🎉 SUPREME FOUND!",
+                    Text = clan .. " sau " .. count .. " lần",
+                    Duration = 10,
+                })
+            end)
+            break
+        end
+
+        task.wait(0.3)
+    end
+
+    isRolling = false
+    StartBtn.Text = "▶️ BẮT ĐẦU"
+    StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+end
+
+-- ═══════════════════════════════════════════════════════
+-- SEQUENCE TỰ ĐỘNG (1 CLICK = FULL AUTO)
+-- ═══════════════════════════════════════════════════════
+
+local function runAutoSequence()
+    -- 1. Đợi 5s
+    Status.Text = "⏳ Đợi game load (5s)..."
+    log("⏳ Đợi 5s...", Color3.fromRGB(200, 200, 200))
+    task.wait(5)
+
+    -- 2. Nhập Code 1
+    Status.Text = "📝 Nhập code 1..."
+    log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
+    pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
+    task.wait(2)
+
+    -- 3. Nhập Code 2
+    Status.Text = "📝 Nhập code 2..."
+    log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
+    pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
+    task.wait(0.5)
+
+    -- 4. Mở Customize
+    Status.Text = "🎨 Mở Customize..."
+    log("🎨 Mở Customize", Color3.fromRGB(200, 100, 255))
+    pcall(function()
+        local btn = PG.Components.Menu.OptionsHolder["2-CUSTOMIZE-Presenter"].Button
+        btn:Activate()
+    end)
+    task.wait(1)
+
+    -- 5. Bắt đầu auto roll
+    Status.Text = "🚀 Bắt đầu auto roll..."
+    StartBtn.Text = "⏹️ DỪNG"
+    StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+    task.spawn(autoRoll)
+end
+
+-- ⭐ TỰ ĐỘNG CHẠY NGAY KHI LOAD
+task.spawn(runAutoSequence)
+
+-- ═══════════════════════════════════════════════════════
+-- NÚT MANUAL
+-- ═══════════════════════════════════════════════════════
+
+StartBtn.MouseButton1Click:Connect(function()
+    if isRolling then
+        isRolling = false
+        Status.Text = "⏹ Đã dừng."
+        Status.TextColor3 = Color3.fromRGB(200,200,200)
+    else
+        StartBtn.Text = "⏹️ DỪNG"
+        StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+        task.spawn(autoRoll)
+    end
+end)
+
+-- Khởi tạo UI
+ClanLbl.Text = "Clan: " .. (getClan() or "---")
+SpinsLbl.Text = "Spins: " .. getSpins()
+
+print("✅ FULL AUTO LOADED!")
+print("👤 User: " .. LP.Name)
+print("📝 Code 1: " .. CODE_1)
+print("📝 Code 2: " .. CODE_2)
+print("⏳ Sẽ tự chạy sau 5 giây...")
