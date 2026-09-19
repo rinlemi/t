@@ -10,7 +10,8 @@ local SUPREME_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
-    -- ["Rengoku"] = true,  -- Thêm nếu cần
+    ["Rengoku"] = true,  -- Thêm nếu cần
+    ["Aori"] = true,  -- Thêm nếu cần
 }
 
 -- Xóa UI cũ
