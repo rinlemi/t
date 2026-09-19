@@ -16,6 +16,7 @@ local SE = RS.Communication.ServerAndClient.Signals.SignalEvent.Event
 local CODE_1 = "EVILARTSPINS"
 local CODE_2 = "SORRYFORSHUTDOWN"
 local ROLL_DELAY = 1.0
+local STEP_DELAY = 2  -- ⭐ Delay giữa các bước
 
 local SUPREME_CLANS = {
     ["Kamado"] = true,
@@ -47,7 +48,6 @@ Main.Draggable = true
 Main.Parent = SG
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
--- Title
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 45)
 Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
@@ -94,7 +94,6 @@ CopyBtn.MouseButton1Click:Connect(function()
     CopyBtn.Text = "📋 COPY"
 end)
 
--- Status
 local Status = Instance.new("TextLabel")
 Status.Size = UDim2.new(1, -20, 0, 30)
 Status.Position = UDim2.new(0, 10, 0, 95)
@@ -107,7 +106,6 @@ Status.Font = Enum.Font.Gotham
 Status.Parent = Main
 Instance.new("UICorner", Status).CornerRadius = UDim.new(0, 6)
 
--- Rolls + Spins
 local RollsLbl = Instance.new("TextLabel")
 RollsLbl.Size = UDim2.new(0.5, -15, 0, 30)
 RollsLbl.Position = UDim2.new(0, 10, 0, 135)
@@ -132,7 +130,6 @@ SpinsLbl.Font = Enum.Font.GothamBold
 SpinsLbl.Parent = Main
 Instance.new("UICorner", SpinsLbl).CornerRadius = UDim.new(0, 6)
 
--- Clan
 local ClanLbl = Instance.new("TextLabel")
 ClanLbl.Size = UDim2.new(1, -20, 0, 35)
 ClanLbl.Position = UDim2.new(0, 10, 0, 175)
@@ -145,7 +142,6 @@ ClanLbl.Font = Enum.Font.GothamBold
 ClanLbl.Parent = Main
 Instance.new("UICorner", ClanLbl).CornerRadius = UDim.new(0, 6)
 
--- Log box
 local LogBox = Instance.new("ScrollingFrame")
 LogBox.Size = UDim2.new(1, -20, 0, 80)
 LogBox.Position = UDim2.new(0, 10, 0, 220)
@@ -172,7 +168,6 @@ local function log(text, color)
     lbl.Parent = LogBox
 end
 
--- Start
 local StartBtn = Instance.new("TextButton")
 StartBtn.Size = UDim2.new(1, -20, 0, 45)
 StartBtn.Position = UDim2.new(0, 10, 0, 310)
@@ -185,7 +180,6 @@ StartBtn.Font = Enum.Font.GothamBold
 StartBtn.Parent = Main
 Instance.new("UICorner", StartBtn).CornerRadius = UDim.new(0, 6)
 
--- Close
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 25, 0, 25)
 CloseBtn.Position = UDim2.new(1, -30, 0, 5)
@@ -222,6 +216,53 @@ end
 
 local function isSupreme(name)
     return SUPREME_CLANS[name] == true
+end
+
+-- ⭐ HÀM CHỜ CUSTOMIZE BUTTON TỒN TẠI
+local function waitForCustomizeButton(timeout)
+    timeout = timeout or 30
+    local t = tick() + timeout
+    while tick() < t do
+        local pg = LP.PlayerGui
+        local components = pg:FindFirstChild("Components")
+        local menu = components and components:FindFirstChild("Menu")
+        local holder = menu and menu:FindFirstChild("OptionsHolder")
+        local presenter = holder and holder:FindFirstChild("2-CUSTOMIZE-Presenter")
+        local btn = presenter and presenter:FindFirstChild("Button")
+        if btn then return btn end
+        task.wait(0.3)
+    end
+    return nil
+end
+
+-- ⭐ HÀM CLICK BUTTON BẰNG NHIỀU CÁCH
+local function clickButton(btn)
+    if not btn then return false end
+    
+    local clicked = false
+    
+    -- Cách 1: Activate()
+    pcall(function()
+        btn:Activate()
+        clicked = true
+    end)
+    
+    -- Cách 2: firesignal
+    if firesignal then
+        pcall(function() firesignal(btn.MouseButton1Click) end)
+        pcall(function() firesignal(btn.Activated) end)
+    end
+    
+    -- Cách 3: Mô phỏng chuột
+    pcall(function()
+        local VIM = game:GetService("VirtualInputManager")
+        local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+    
+    return clicked
 end
 
 -- ═══════════════════════════════════════════════════════
@@ -306,44 +347,59 @@ local function autoRoll()
 end
 
 -- ═══════════════════════════════════════════════════════
--- SEQUENCE TỰ ĐỘNG (1 CLICK = FULL AUTO)
+-- SEQUENCE TỰ ĐỘNG — 1 CLICK FULL AUTO
 -- ═══════════════════════════════════════════════════════
 
 local function runAutoSequence()
-    -- 1. Đợi 5s
+    -- 1. Đợi 5s cho game load
     Status.Text = "⏳ Đợi game load (5s)..."
-    log("⏳ Đợi 5s...", Color3.fromRGB(200, 200, 200))
+    log("⏳ Đợi game load (5s)", Color3.fromRGB(200, 200, 200))
     task.wait(5)
 
     -- 2. Nhập Code 1
     Status.Text = "📝 Nhập code 1..."
     log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
-    task.wait(2)
+    log("⏳ Đợi " .. STEP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
+    task.wait(STEP_DELAY)
 
     -- 3. Nhập Code 2
     Status.Text = "📝 Nhập code 2..."
     log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
-    task.wait(0.5)
+    log("⏳ Đợi " .. STEP_DELAY .. "s cho popup reward đóng...", Color3.fromRGB(200, 200, 200))
+    task.wait(STEP_DELAY)
 
-    -- 4. Mở Customize
-    Status.Text = "🎨 Mở Customize..."
-    log("🎨 Mở Customize", Color3.fromRGB(200, 100, 255))
-    pcall(function()
-        local btn = PG.Components.Menu.OptionsHolder["2-CUSTOMIZE-Presenter"].Button
-        btn:Activate()
-    end)
-    task.wait(1)
+    -- 4. Chờ Customize button tồn tại
+    Status.Text = "🎨 Chờ Customize..."
+    log("🎨 Chờ Customize button...", Color3.fromRGB(200, 100, 255))
+    
+    local btn = waitForCustomizeButton(30)
+    
+    if btn then
+        log("✅ Tìm thấy Customize button", Color3.fromRGB(100, 255, 100))
+        log("   Visible: " .. tostring(btn.Visible), Color3.fromRGB(200, 200, 200))
+        log("   Active: " .. tostring(btn.Active), Color3.fromRGB(200, 200, 200))
+        
+        clickButton(btn)
+        log("✅ Đã click Customize (3 cách)", Color3.fromRGB(100, 255, 100))
+    else
+        log("❌ Không tìm thấy Customize button", Color3.fromRGB(255, 100, 100))
+    end
+    
+    -- 5. Đợi menu mở xong
+    log("⏳ Đợi menu mở (2s)...", Color3.fromRGB(200, 200, 200))
+    task.wait(2)
 
-    -- 5. Bắt đầu auto roll
+    -- 6. Auto roll
     Status.Text = "🚀 Bắt đầu auto roll..."
+    log("🚀 Auto roll Supreme", Color3.fromRGB(255, 100, 200))
     StartBtn.Text = "⏹️ DỪNG"
     StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
     task.spawn(autoRoll)
 end
 
--- ⭐ TỰ ĐỘNG CHẠY NGAY KHI LOAD
+-- ⭐ TỰ ĐỘNG CHẠY NGAY KHI LOAD SCRIPT
 task.spawn(runAutoSequence)
 
 -- ═══════════════════════════════════════════════════════
