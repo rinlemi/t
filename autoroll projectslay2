@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO ROLL CLAN - SUPREME HUNTER
--- Tối ưu: chống race condition, có log, thông báo, âm thanh
+-- 🎰 AUTO ROLL CLAN - SUPREME HUNTER [FAST VERSION]
+-- Tối ưu: poll liên tục, chống race condition, UI đẹp
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -18,19 +18,11 @@ local SUPREME_CLANS = {
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
-    ["Hagiwara"] = true,
 }
 
--- Để test: thêm clan Common vào đây
+-- ⚠️ TEST: Mở comment 2 dòng dưới để test logic dừng nhanh
 -- ["Hagiwara"] = true,
 -- ["Toka"] = true,
-
-local TIMING = {
-    BEFORE_COMPLETE = 1.0,   -- Đợi trước khi gửi ClanSpinComplete
-    AFTER_COMPLETE = 0.3,    -- Đợi sau khi gửi complete
-    MAX_WAIT_UPDATE = 5,     -- Timeout chờ data update
-    BETWEEN_ROLLS = 0.2,     -- Nghỉ giữa các lần quay
-}
 
 -- ===== XÓA UI CŨ =====
 local old = LP.PlayerGui:FindFirstChild("AutoRollClanUI")
@@ -55,7 +47,6 @@ Main.Draggable = true
 Main.Parent = SG
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
--- Stroke viền
 local stroke = Instance.new("UIStroke")
 stroke.Color = Color3.fromRGB(180, 40, 180)
 stroke.Thickness = 2
@@ -225,20 +216,6 @@ local function isSupreme(name)
     return SUPREME_CLANS[name] == true
 end
 
--- Chờ data update (chống race condition)
-local function waitForUpdate(oldClan, oldSpins, timeout)
-    timeout = timeout or TIMING.MAX_WAIT_UPDATE
-    local t = tick() + timeout
-    while tick() < t do
-        task.wait(0.05)
-        if getClan() ~= oldClan and getSpins() < oldSpins then
-            return true
-        end
-    end
-    return false
-end
-
--- Thông báo
 local function notify(title, text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -250,7 +227,7 @@ local function notify(title, text)
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL
+-- AUTO ROLL - BẢN NHANH
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
@@ -277,7 +254,6 @@ local function autoRoll()
         Status.TextColor3 = Color3.fromRGB(255,220,100)
 
         local clanBefore = getClan()
-        local spinsBefore = getSpins()
 
         -- Gửi ClanSpin
         local ok = pcall(function() SF:InvokeServer("ClanSpin") end)
@@ -286,42 +262,39 @@ local function autoRoll()
             break
         end
 
-        -- Đợi rồi gửi Complete
-        task.wait(TIMING.BEFORE_COMPLETE)
+        -- Gửi Complete nhanh
+        task.wait(0.05)
         pcall(function() SE:FireServer("ClanSpinComplete") end)
-        task.wait(TIMING.AFTER_COMPLETE)
 
-        -- Chờ data update
-        local updated = waitForUpdate(clanBefore, spinsBefore)
+        -- Poll liên tục phát hiện clan đổi
+        local t = tick()
+        local newClan = clanBefore
+        while tick() - t < 5 do
+            task.wait(0.02)
+            newClan = getClan()
+            if newClan ~= clanBefore then break end
+        end
 
         count = count + 1
         RollsLbl.Text = "Quay: " .. count
+        SpinsLbl.Text = "Spins: " .. getSpins()
 
-        local clan = getClan()
-        local newSpins = getSpins()
-
-        if clan then
-            ClanLbl.Text = "Clan: " .. clan
-        end
-        SpinsLbl.Text = "Spins: " .. newSpins
-
-        -- Log kết quả
-        if clan and clan ~= clanBefore then
-            log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
+        if newClan and newClan ~= clanBefore then
+            ClanLbl.Text = "Clan: " .. newClan
+            log("#" .. count .. ": " .. newClan, Color3.fromRGB(150, 200, 255))
         end
 
         -- Check Supreme
-        if clan and isSupreme(clan) then
-            Status.Text = "🎉 SUPREME: " .. clan
+        if newClan and isSupreme(newClan) then
+            Status.Text = "🎉 SUPREME: " .. newClan
             Status.TextColor3 = Color3.fromRGB(255, 215, 0)
             ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
-            log("🎉🎉 SUPREME: " .. clan, Color3.fromRGB(255, 215, 0))
-
-            notify("🎉 SUPREME FOUND!", clan .. " sau " .. count .. " lần (" .. math.floor(tick() - startTime) .. "s)")
+            log("🎉🎉 SUPREME: " .. newClan, Color3.fromRGB(255, 215, 0))
+            notify("🎉 SUPREME FOUND!", newClan .. " sau " .. count .. " lần (" .. math.floor(tick() - startTime) .. "s)")
             break
         end
 
-        task.wait(TIMING.BETWEEN_ROLLS)
+        task.wait(0.05)
     end
 
     isRolling = false
@@ -360,3 +333,4 @@ log("🎯 Target: " .. table.concat((function()
 end)(), ", "), Color3.fromRGB(255, 100, 200))
 
 print("✅ AUTO SUPREME HUNTER đã load!")
+print("⚡ Tốc độ: ~0.5s/roll")
