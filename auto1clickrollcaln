@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — SAFE VERSION (0.5s/roll)
+-- 🎰 AUTO SUPREME HUNTER — SAFE + FULL LOG
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -32,7 +32,7 @@ local CODE_1 = "EVILARTSPINS"
 local CODE_2 = "SORRYFORSHUTDOWN"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
-local ROLL_DELAY = 0.5  -- ⭐ SAFE DELAY
+local ROLL_DELAY = 0.5
 
 local TARGET_CLANS = {
     ["Kamado"] = true,
@@ -54,8 +54,8 @@ SG.ResetOnSpawn = false
 SG.Parent = PG
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 320, 0, 400)
-Main.Position = UDim2.new(0, 20, 0.5, -200)
+Main.Size = UDim2.new(0, 320, 0, 440)
+Main.Position = UDim2.new(0, 20, 0.5, -220)
 Main.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -156,8 +156,9 @@ ClanLbl.Font = Enum.Font.GothamBold
 ClanLbl.Parent = Main
 Instance.new("UICorner", ClanLbl).CornerRadius = UDim.new(0, 6)
 
+-- ⭐ LOG BOX CAO HƠN (150px)
 local LogBox = Instance.new("ScrollingFrame")
-LogBox.Size = UDim2.new(1, -20, 0, 80)
+LogBox.Size = UDim2.new(1, -20, 0, 150)
 LogBox.Position = UDim2.new(0, 10, 0, 220)
 LogBox.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 LogBox.BorderSizePixel = 0
@@ -184,7 +185,7 @@ end
 
 local StartBtn = Instance.new("TextButton")
 StartBtn.Size = UDim2.new(1, -20, 0, 45)
-StartBtn.Position = UDim2.new(0, 10, 0, 310)
+StartBtn.Position = UDim2.new(0, 10, 0, 380)
 StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 StartBtn.BorderSizePixel = 0
 StartBtn.Text = "▶️ BẮT ĐẦU"
@@ -207,7 +208,10 @@ CloseBtn.Parent = Main
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
+-- ═══════════════════════════════════════════════════════
 -- HELPERS
+-- ═══════════════════════════════════════════════════════
+
 local function getSlot()
     local data = RS:FindFirstChild("Player_Service")
         and RS.Player_Service:FindFirstChild("Data")
@@ -275,7 +279,7 @@ local function clickButton(btn)
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL — SAFE (0.5s/roll + check trước roll)
+-- AUTO ROLL — SAFE + FULL LOG
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
@@ -305,10 +309,9 @@ local function autoRoll()
         end)
     end
 
-    log("🚀 Auto roll — SAFE 0.5s", Color3.fromRGB(255, 100, 200))
+    log("🚀 Auto roll — SAFE 0.5s (full log)", Color3.fromRGB(255, 100, 200))
 
     while isRolling and not shouldBlock do
-        -- ⭐ CHECK #1: CLAN HIỆN TẠI ĐÃ SUPREME CHƯA
         local currentClan = getClan()
         if currentClan and isTarget(currentClan) then
             gotTarget = true
@@ -326,7 +329,9 @@ local function autoRoll()
         if spins <= 0 then
             Status.Text = "❌ Hết spins"
             Status.TextColor3 = Color3.fromRGB(255,100,100)
-            log("❌ Hết spins sau " .. count .. " lần", Color3.fromRGB(255, 100, 100))
+            log("═══════════════════════════", Color3.fromRGB(255, 100, 100))
+            log("❌ Hết spins sau " .. count .. " roll", Color3.fromRGB(255, 100, 100))
+            log("═══════════════════════════", Color3.fromRGB(255, 100, 100))
             break
         end
 
@@ -378,11 +383,21 @@ local function autoRoll()
         ClanLbl.Text = "Clan: " .. (clan or "---")
         SpinsLbl.Text = "Spins: " .. getSpins()
         
-        if clan and clan ~= clanBefore then
-            log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
+        -- ⭐ LOG MỌI ROLL VỚI MÀU PHÂN BIỆT
+        if clan then
+            local color = Color3.fromRGB(150, 200, 255)
+            local prefix = "#" .. count .. ": "
+            
+            if isTarget(clan) then
+                color = Color3.fromRGB(255, 215, 0)
+                prefix = "⭐ #" .. count .. ": "
+            elseif clan == clanBefore then
+                color = Color3.fromRGB(120, 120, 120)
+            end
+            
+            log(prefix .. clan, color)
         end
 
-        -- ⭐ NGHỈ 0.5s (SAFE DELAY)
         task.wait(ROLL_DELAY)
     end
 
@@ -394,7 +409,9 @@ local function autoRoll()
         Status.TextColor3 = Color3.fromRGB(255, 215, 0)
         ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
         ClanLbl.Text = "Clan: " .. found
+        log("═══════════════════════════", Color3.fromRGB(255, 215, 0))
         log("🎉🎉 SUPREME: " .. found, Color3.fromRGB(255, 215, 0))
+        log("═══════════════════════════", Color3.fromRGB(255, 215, 0))
         pcall(function()
             StarterGui:SetCore("SendNotification", {
                 Title = "🎉 SUPREME FOUND!",
@@ -410,7 +427,10 @@ local function autoRoll()
     StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 end
 
+-- ═══════════════════════════════════════════════════════
 -- SEQUENCE
+-- ═══════════════════════════════════════════════════════
+
 local function runAutoSequence()
     Status.Text = "⏳ Đợi " .. STARTUP_DELAY .. "s..."
     log("⏳ Đợi " .. STARTUP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
@@ -433,18 +453,23 @@ local function runAutoSequence()
     end
 
     Status.Text = "📝 Nhập code 1..."
+    log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
     task.wait(STEP_DELAY)
 
     Status.Text = "📝 Nhập code 2..."
+    log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
     task.wait(STEP_DELAY)
 
     Status.Text = "🎨 Chờ Customize..."
+    log("🎨 Tìm Customize...", Color3.fromRGB(200, 100, 255))
     local btn = waitForCustomizeButton(60)
     if btn then
         clickButton(btn)
         log("✅ Đã click Customize", Color3.fromRGB(100, 255, 100))
+    else
+        log("❌ Không tìm thấy Customize", Color3.fromRGB(255, 100, 100))
     end
     
     task.wait(2)
@@ -473,7 +498,8 @@ ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
 print("═══════════════════════════════════════")
-print("✅ SAFE MODE LOADED!")
-print("🛡️ Roll delay: 0.5s (an toàn hơn)")
-print("🎯 Check clan trước mỗi roll")
+print("✅ SAFE + FULL LOG LOADED!")
+print("👤 User: " .. LP.Name)
+print("🛡️ Roll delay: 0.5s")
+print("📋 Log MỌI roll + đánh dấu Supreme ⭐")
 print("═══════════════════════════════════════")
