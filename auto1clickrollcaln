@@ -1,6 +1,5 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — FINAL
--- Target: Kamado, Soyama, Uzui, Rengoku
+-- 🎰 AUTO SUPREME HUNTER — MAX SAFETY VERSION
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -34,12 +33,14 @@ local CODE_2 = "SORRYFORSHUTDOWN"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
 
--- ⭐ TARGET: SUPREME
+-- ⭐ TEST: Thêm clan dễ vào đây để verify
 local TARGET_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
+    -- ["Aori"] = true,   -- ⭐ TEST: Bật để test logic
+    -- ["Kaneki"] = true,
 }
 
 local old = PG:FindFirstChild("AutoRollClanUI")
@@ -208,10 +209,7 @@ CloseBtn.Parent = Main
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
--- ═══════════════════════════════════════════════════════
 -- HELPERS
--- ═══════════════════════════════════════════════════════
-
 local function getSlot()
     local data = RS:FindFirstChild("Player_Service")
         and RS.Player_Service:FindFirstChild("Data")
@@ -279,38 +277,45 @@ local function clickButton(btn)
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL
+-- AUTO ROLL — MAX SAFETY (block + kill + 6 checks)
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
+local shouldBlock = false  -- ⭐ SHARED FLAG
 
 local function autoRoll()
     isRolling = true
+    shouldBlock = false
     local count = 0
     local gotTarget = false
     local targetClan = nil
-    local stopSignal = false
     
     local slot = getSlot()
     local conn = nil
     
+    -- ⭐ SIGNAL: BLOCK NGAY KHI SUPREME
     if slot and slot:FindFirstChild("Clan") then
         conn = slot.Clan:GetPropertyChangedSignal("Value"):Connect(function()
             local newClan = slot.Clan.Value
-            if isTarget(newClan) then
+            if isTarget(newClan) and not gotTarget then
                 gotTarget = true
                 targetClan = newClan
-                stopSignal = true
+                shouldBlock = true
                 isRolling = false
-                log("🎯 SIGNAL: " .. newClan, Color3.fromRGB(100, 255, 200))
+                
+                -- ⭐ KILL ANIMATION NGAY
+                pcall(function() SF:InvokeServer("ClanSpin") end)
+                
+                log("🛑 SIGNAL BLOCK: " .. newClan, Color3.fromRGB(255, 100, 100))
             end
         end)
     end
 
-    log("🚀 Auto roll — Target: Supreme", Color3.fromRGB(255, 100, 200))
+    log("🚀 Auto roll — MAX SAFETY", Color3.fromRGB(255, 100, 200))
 
-    while isRolling do
-        if gotTarget or stopSignal then break end
+    while isRolling and not shouldBlock do
+        -- ⭐ CHECK #1: Đầu vòng lặp
+        if shouldBlock or gotTarget then break end
         
         local spins = getSpins()
         SpinsLbl.Text = "Spins: " .. spins
@@ -328,35 +333,47 @@ local function autoRoll()
         local clanBefore = getClan()
         local spinsBefore = getSpins()
 
+        -- ⭐ CHECK #2: TRƯỚC KHI GỬI
+        if shouldBlock then break end
+        
         local ok = pcall(function() SF:InvokeServer("ClanSpin") end)
-        if not ok then
-            log("❌ Lỗi ClanSpin", Color3.fromRGB(255, 80, 80))
-            break
-        end
+        if not ok then break end
 
+        -- ⭐ CHECK #3: SAU KHI GỬI
+        if shouldBlock then break end
+        
         for i = 1, 5 do
             task.wait(0.02)
+            -- ⭐ CHECK #4: MỖI LẦN COMPLETE
+            if shouldBlock then break end
             pcall(function() SE:FireServer("ClanSpinComplete") end)
         end
 
+        -- ⭐ CHECK #5: SAU COMPLETE
+        if shouldBlock then break end
+        
         local t = tick()
         while tick() - t < 3 do
             task.wait(0.01)
             
-            if gotTarget or stopSignal then break end
+            -- ⭐ CHECK #6: TRONG POLL
+            if shouldBlock then break end
             
             if getSpins() < spinsBefore then
                 local c = getClan()
-                if c and isTarget(c) then
+                if c and isTarget(c) and not gotTarget then
                     gotTarget = true
                     targetClan = c
-                    stopSignal = true
+                    shouldBlock = true
+                    isRolling = false
+                    pcall(function() SF:InvokeServer("ClanSpin") end)
                 end
                 break
             end
         end
 
-        if gotTarget or stopSignal then break end
+        -- ⭐ CHECK #7: TRƯỚC KHI TĂNG COUNT
+        if shouldBlock or gotTarget then break end
 
         count = count + 1
         RollsLbl.Text = "Quay: " .. count
@@ -396,14 +413,12 @@ local function autoRoll()
     end
 
     isRolling = false
+    shouldBlock = false
     StartBtn.Text = "▶️ BẮT ĐẦU"
     StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 end
 
--- ═══════════════════════════════════════════════════════
 -- SEQUENCE
--- ═══════════════════════════════════════════════════════
-
 local function runAutoSequence()
     Status.Text = "⏳ Đợi " .. STARTUP_DELAY .. "s..."
     log("⏳ Đợi " .. STARTUP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
@@ -424,9 +439,7 @@ local function runAutoSequence()
     local t = tick() + 60
     while tick() < t do
         local ps = RS:FindFirstChild("Player_Service")
-        if ps and ps:FindFirstChild("Data") and ps.Data:FindFirstChild(LP.Name) then
-            break
-        end
+        if ps and ps:FindFirstChild("Data") and ps.Data:FindFirstChild(LP.Name) then break end
         task.wait(0.5)
     end
     log("✅ Data loaded", Color3.fromRGB(100, 255, 100))
@@ -466,6 +479,7 @@ task.spawn(runAutoSequence)
 StartBtn.MouseButton1Click:Connect(function()
     if isRolling then
         isRolling = false
+        shouldBlock = true
         Status.Text = "⏹ Đã dừng."
         Status.TextColor3 = Color3.fromRGB(200,200,200)
     else
@@ -479,8 +493,7 @@ ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
 print("═══════════════════════════════════════")
-print("✅ AUTO SUPREME FINAL LOADED!")
+print("✅ MAX SAFETY LOADED!")
 print("👤 User: " .. LP.Name)
-print("🎯 Target: Kamado, Soyama, Uzui, Rengoku")
-print("⏳ Đợi 5s → sequence → auto roll")
+print("🛡️ 7 lớp check + block + kill animation")
 print("═══════════════════════════════════════")
