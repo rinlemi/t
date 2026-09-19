@@ -1,22 +1,69 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — FULL AUTO (1 CLICK)
+-- 🎰 AUTO SUPREME HUNTER — FULL AUTO (Auto-Execute Safe)
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
-local LP = Players.LocalPlayer
-local PG = LP.PlayerGui
 local StarterGui = game:GetService("StarterGui")
 
--- REMOTE
-local SF = RS.Communication.ServerAndClient.Signals.SignalFunction.Function
-local SE = RS.Communication.ServerAndClient.Signals.SignalEvent.Event
+-- ⭐ 1. CHỜ LOCALPLAYER
+local LP = Players.LocalPlayer
+if not LP then
+    print("⏳ Chờ LocalPlayer...")
+    repeat
+        task.wait(0.1)
+        LP = Players.LocalPlayer
+    until LP
+end
+print("✅ LP:", LP.Name)
+
+-- ⭐ 2. CHỜ PLAYERGUI
+local PG = LP:WaitForChild("PlayerGui", 60)
+print("✅ PlayerGui:", PG and "OK" or "FAIL")
+
+-- ⭐ 3. CHỜ REMOTE
+local SF, SE
+local t = tick() + 60
+while tick() < t do
+    local comm = RS:FindFirstChild("Communication")
+    if comm then
+        local sac = comm:FindFirstChild("ServerAndClient")
+        if sac then
+            local sig = sac:FindFirstChild("Signals")
+            if sig then
+                SF = sig:FindFirstChild("SignalFunction") 
+                    and sig.SignalFunction:FindFirstChild("Function")
+                SE = sig:FindFirstChild("SignalEvent")
+                    and sig.SignalEvent:FindFirstChild("Event")
+                if SF and SE then break end
+            end
+        end
+    end
+    task.wait(0.2)
+end
+print("✅ SF:", SF and "OK" or "FAIL")
+print("✅ SE:", SE and "OK" or "FAIL")
+
+-- ⭐ 4. CHỜ DATA PLAYER
+local t2 = tick() + 60
+while tick() < t2 do
+    local ps = RS:FindFirstChild("Player_Service")
+    if ps then
+        local data = ps:FindFirstChild("Data")
+        if data then
+            local me = data:FindFirstChild(LP.Name)
+            if me then break end
+        end
+    end
+    task.wait(0.3)
+end
+print("✅ Data:", "OK")
 
 -- ⚙️ CẤU HÌNH
 local CODE_1 = "EVILARTSPINS"
 local CODE_2 = "SORRYFORSHUTDOWN"
 local ROLL_DELAY = 1.0
-local STEP_DELAY = 2  -- ⭐ Delay giữa các bước
+local STEP_DELAY = 2
 
 local SUPREME_CLANS = {
     ["Kamado"] = true,
@@ -59,7 +106,6 @@ Title.Font = Enum.Font.GothamBold
 Title.Parent = Main
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
 
--- Username + Copy
 local UserLabel = Instance.new("TextLabel")
 UserLabel.Size = UDim2.new(0.6, -15, 0, 32)
 UserLabel.Position = UDim2.new(0, 10, 0, 55)
@@ -198,10 +244,12 @@ CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 -- ═══════════════════════════════════════════════════════
 
 local function getSlot()
-    local data = RS:FindFirstChild("Player_Service"):FindFirstChild("Data"):FindFirstChild(LP.Name)
+    local data = RS:FindFirstChild("Player_Service")
+        and RS.Player_Service:FindFirstChild("Data")
+        and RS.Player_Service.Data:FindFirstChild(LP.Name)
     if not data then return nil end
     local equipped = data.slotEquipped and data.slotEquipped.Value or 1
-    return data.slots["Slot" .. equipped]
+    return data.slots and data.slots["Slot" .. equipped]
 end
 
 local function getClan()
@@ -211,20 +259,18 @@ end
 
 local function getSpins()
     local s = getSlot()
-    return s and s.Spinning and s.Spinning.Spins.Value or 0
+    return s and s.Spinning and s.Spinning.Spins and s.Spinning.Spins.Value or 0
 end
 
 local function isSupreme(name)
     return SUPREME_CLANS[name] == true
 end
 
--- ⭐ HÀM CHỜ CUSTOMIZE BUTTON TỒN TẠI
 local function waitForCustomizeButton(timeout)
-    timeout = timeout or 30
+    timeout = timeout or 60
     local t = tick() + timeout
     while tick() < t do
-        local pg = LP.PlayerGui
-        local components = pg:FindFirstChild("Components")
+        local components = PG:FindFirstChild("Components")
         local menu = components and components:FindFirstChild("Menu")
         local holder = menu and menu:FindFirstChild("OptionsHolder")
         local presenter = holder and holder:FindFirstChild("2-CUSTOMIZE-Presenter")
@@ -235,25 +281,16 @@ local function waitForCustomizeButton(timeout)
     return nil
 end
 
--- ⭐ HÀM CLICK BUTTON BẰNG NHIỀU CÁCH
 local function clickButton(btn)
     if not btn then return false end
     
-    local clicked = false
+    pcall(function() btn:Activate() end)
     
-    -- Cách 1: Activate()
-    pcall(function()
-        btn:Activate()
-        clicked = true
-    end)
-    
-    -- Cách 2: firesignal
     if firesignal then
         pcall(function() firesignal(btn.MouseButton1Click) end)
         pcall(function() firesignal(btn.Activated) end)
     end
     
-    -- Cách 3: Mô phỏng chuột
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
         local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
@@ -262,7 +299,7 @@ local function clickButton(btn)
         VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
     end)
     
-    return clicked
+    return true
 end
 
 -- ═══════════════════════════════════════════════════════
@@ -347,51 +384,44 @@ local function autoRoll()
 end
 
 -- ═══════════════════════════════════════════════════════
--- SEQUENCE TỰ ĐỘNG — 1 CLICK FULL AUTO
+-- SEQUENCE TỰ ĐỘNG
 -- ═══════════════════════════════════════════════════════
 
 local function runAutoSequence()
-    -- 1. Đợi 5s cho game load
     Status.Text = "⏳ Đợi game load (5s)..."
     log("⏳ Đợi game load (5s)", Color3.fromRGB(200, 200, 200))
     task.wait(5)
 
-    -- 2. Nhập Code 1
     Status.Text = "📝 Nhập code 1..."
     log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
     log("⏳ Đợi " .. STEP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
-    -- 3. Nhập Code 2
     Status.Text = "📝 Nhập code 2..."
     log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
-    log("⏳ Đợi " .. STEP_DELAY .. "s cho popup reward đóng...", Color3.fromRGB(200, 200, 200))
+    log("⏳ Đợi " .. STEP_DELAY .. "s cho popup đóng...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
-    -- 4. Chờ Customize button tồn tại
     Status.Text = "🎨 Chờ Customize..."
     log("🎨 Chờ Customize button...", Color3.fromRGB(200, 100, 255))
     
-    local btn = waitForCustomizeButton(30)
+    local btn = waitForCustomizeButton(60)
     
     if btn then
-        log("✅ Tìm thấy Customize button", Color3.fromRGB(100, 255, 100))
+        log("✅ Tìm thấy Customize", Color3.fromRGB(100, 255, 100))
         log("   Visible: " .. tostring(btn.Visible), Color3.fromRGB(200, 200, 200))
         log("   Active: " .. tostring(btn.Active), Color3.fromRGB(200, 200, 200))
-        
         clickButton(btn)
         log("✅ Đã click Customize (3 cách)", Color3.fromRGB(100, 255, 100))
     else
-        log("❌ Không tìm thấy Customize button", Color3.fromRGB(255, 100, 100))
+        log("❌ Không tìm thấy Customize sau 60s", Color3.fromRGB(255, 100, 100))
     end
     
-    -- 5. Đợi menu mở xong
     log("⏳ Đợi menu mở (2s)...", Color3.fromRGB(200, 200, 200))
     task.wait(2)
 
-    -- 6. Auto roll
     Status.Text = "🚀 Bắt đầu auto roll..."
     log("🚀 Auto roll Supreme", Color3.fromRGB(255, 100, 200))
     StartBtn.Text = "⏹️ DỪNG"
@@ -399,7 +429,7 @@ local function runAutoSequence()
     task.spawn(autoRoll)
 end
 
--- ⭐ TỰ ĐỘNG CHẠY NGAY KHI LOAD SCRIPT
+-- ⭐ CHẠY AUTO SEQUENCE
 task.spawn(runAutoSequence)
 
 -- ═══════════════════════════════════════════════════════
@@ -422,8 +452,10 @@ end)
 ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
+print("═══════════════════════════════")
 print("✅ FULL AUTO LOADED!")
 print("👤 User: " .. LP.Name)
 print("📝 Code 1: " .. CODE_1)
 print("📝 Code 2: " .. CODE_2)
 print("⏳ Sẽ tự chạy sau 5 giây...")
+print("═══════════════════════════════")
