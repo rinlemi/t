@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — MAX SAFETY VERSION
+-- 🎰 AUTO SUPREME HUNTER — SAFE VERSION (0.5s/roll)
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -32,15 +32,13 @@ local CODE_1 = "EVILARTSPINS"
 local CODE_2 = "SORRYFORSHUTDOWN"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
+local ROLL_DELAY = 0.5  -- ⭐ SAFE DELAY
 
--- ⭐ TEST: Thêm clan dễ vào đây để verify
 local TARGET_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
-    -- ["Aori"] = true,   -- ⭐ TEST: Bật để test logic
-    -- ["Kaneki"] = true,
 }
 
 local old = PG:FindFirstChild("AutoRollClanUI")
@@ -69,7 +67,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 45)
 Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 Title.BorderSizePixel = 0
-Title.Text = "🎰 AUTO SUPREME ⚡"
+Title.Text = "🎰 AUTO SUPREME 🛡️"
 Title.TextColor3 = Color3.fromRGB(255,255,255)
 Title.TextScaled = true
 Title.Font = Enum.Font.GothamBold
@@ -277,11 +275,11 @@ local function clickButton(btn)
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL — MAX SAFETY (block + kill + 6 checks)
+-- AUTO ROLL — SAFE (0.5s/roll + check trước roll)
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
-local shouldBlock = false  -- ⭐ SHARED FLAG
+local shouldBlock = false
 
 local function autoRoll()
     isRolling = true
@@ -293,7 +291,6 @@ local function autoRoll()
     local slot = getSlot()
     local conn = nil
     
-    -- ⭐ SIGNAL: BLOCK NGAY KHI SUPREME
     if slot and slot:FindFirstChild("Clan") then
         conn = slot.Clan:GetPropertyChangedSignal("Value"):Connect(function()
             local newClan = slot.Clan.Value
@@ -302,19 +299,25 @@ local function autoRoll()
                 targetClan = newClan
                 shouldBlock = true
                 isRolling = false
-                
-                -- ⭐ KILL ANIMATION NGAY
                 pcall(function() SF:InvokeServer("ClanSpin") end)
-                
                 log("🛑 SIGNAL BLOCK: " .. newClan, Color3.fromRGB(255, 100, 100))
             end
         end)
     end
 
-    log("🚀 Auto roll — MAX SAFETY", Color3.fromRGB(255, 100, 200))
+    log("🚀 Auto roll — SAFE 0.5s", Color3.fromRGB(255, 100, 200))
 
     while isRolling and not shouldBlock do
-        -- ⭐ CHECK #1: Đầu vòng lặp
+        -- ⭐ CHECK #1: CLAN HIỆN TẠI ĐÃ SUPREME CHƯA
+        local currentClan = getClan()
+        if currentClan and isTarget(currentClan) then
+            gotTarget = true
+            targetClan = currentClan
+            shouldBlock = true
+            log("🛑 Clan hiện tại đã Supreme: " .. currentClan, Color3.fromRGB(255, 215, 0))
+            break
+        end
+        
         if shouldBlock or gotTarget then break end
         
         local spins = getSpins()
@@ -333,30 +336,24 @@ local function autoRoll()
         local clanBefore = getClan()
         local spinsBefore = getSpins()
 
-        -- ⭐ CHECK #2: TRƯỚC KHI GỬI
         if shouldBlock then break end
         
         local ok = pcall(function() SF:InvokeServer("ClanSpin") end)
         if not ok then break end
 
-        -- ⭐ CHECK #3: SAU KHI GỬI
         if shouldBlock then break end
         
         for i = 1, 5 do
             task.wait(0.02)
-            -- ⭐ CHECK #4: MỖI LẦN COMPLETE
             if shouldBlock then break end
             pcall(function() SE:FireServer("ClanSpinComplete") end)
         end
 
-        -- ⭐ CHECK #5: SAU COMPLETE
         if shouldBlock then break end
         
         local t = tick()
         while tick() - t < 3 do
             task.wait(0.01)
-            
-            -- ⭐ CHECK #6: TRONG POLL
             if shouldBlock then break end
             
             if getSpins() < spinsBefore then
@@ -372,7 +369,6 @@ local function autoRoll()
             end
         end
 
-        -- ⭐ CHECK #7: TRƯỚC KHI TĂNG COUNT
         if shouldBlock or gotTarget then break end
 
         count = count + 1
@@ -386,12 +382,8 @@ local function autoRoll()
             log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
         end
 
-        if count % 30 == 0 then
-            log("⏸ Nghỉ 3s...", Color3.fromRGB(255, 220, 100))
-            task.wait(3)
-        end
-
-        task.wait(0.03)
+        -- ⭐ NGHỈ 0.5s (SAFE DELAY)
+        task.wait(ROLL_DELAY)
     end
 
     if conn then conn:Disconnect() end
@@ -425,8 +417,6 @@ local function runAutoSequence()
     task.wait(STARTUP_DELAY)
     
     Status.Text = "⏳ Chờ vào game..."
-    log("⏳ Chờ character...", Color3.fromRGB(200, 200, 200))
-    
     if not waitForCharacter(300) then
         log("❌ Timeout character", Color3.fromRGB(255, 100, 100))
         return
@@ -435,35 +425,26 @@ local function runAutoSequence()
     log("✅ Đã vào game!", Color3.fromRGB(100, 255, 100))
     task.wait(3)
 
-    Status.Text = "⏳ Chờ data..."
     local t = tick() + 60
     while tick() < t do
         local ps = RS:FindFirstChild("Player_Service")
         if ps and ps:FindFirstChild("Data") and ps.Data:FindFirstChild(LP.Name) then break end
         task.wait(0.5)
     end
-    log("✅ Data loaded", Color3.fromRGB(100, 255, 100))
 
     Status.Text = "📝 Nhập code 1..."
-    log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
     task.wait(STEP_DELAY)
 
     Status.Text = "📝 Nhập code 2..."
-    log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
     task.wait(STEP_DELAY)
 
     Status.Text = "🎨 Chờ Customize..."
-    log("🎨 Tìm Customize...", Color3.fromRGB(200, 100, 255))
-    
     local btn = waitForCustomizeButton(60)
     if btn then
-        log("✅ Tìm thấy Customize", Color3.fromRGB(100, 255, 100))
         clickButton(btn)
         log("✅ Đã click Customize", Color3.fromRGB(100, 255, 100))
-    else
-        log("❌ Không tìm thấy Customize", Color3.fromRGB(255, 100, 100))
     end
     
     task.wait(2)
@@ -481,7 +462,6 @@ StartBtn.MouseButton1Click:Connect(function()
         isRolling = false
         shouldBlock = true
         Status.Text = "⏹ Đã dừng."
-        Status.TextColor3 = Color3.fromRGB(200,200,200)
     else
         StartBtn.Text = "⏹️ DỪNG"
         StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
@@ -493,7 +473,7 @@ ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
 print("═══════════════════════════════════════")
-print("✅ MAX SAFETY LOADED!")
-print("👤 User: " .. LP.Name)
-print("🛡️ 7 lớp check + block + kill animation")
+print("✅ SAFE MODE LOADED!")
+print("🛡️ Roll delay: 0.5s (an toàn hơn)")
+print("🎯 Check clan trước mỗi roll")
 print("═══════════════════════════════════════")
