@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO UNCOMMON HUNTER — TEST VERSION
--- Target: Aori, Aoshima, Kaneki, Kurotsume, Yamagiri
+-- 🎰 AUTO SUPREME HUNTER — FINAL
+-- Target: Kamado, Soyama, Uzui, Rengoku
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -34,15 +34,12 @@ local CODE_2 = "SORRYFORSHUTDOWN"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
 
--- ⭐ TARGET: UNCOMMON (test)
-local TARGET_CLANS = {
-    -- ⭐ TARGET: SUPREME
+-- ⭐ TARGET: SUPREME
 local TARGET_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
-}
 }
 
 local old = PG:FindFirstChild("AutoRollClanUI")
@@ -69,9 +66,9 @@ Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 45)
-Title.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
+Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 Title.BorderSizePixel = 0
-Title.Text = "🎰 AUTO UNCOMMON (TEST)"
+Title.Text = "🎰 AUTO SUPREME ⚡"
 Title.TextColor3 = Color3.fromRGB(255,255,255)
 Title.TextScaled = true
 Title.Font = Enum.Font.GothamBold
@@ -189,7 +186,7 @@ end
 local StartBtn = Instance.new("TextButton")
 StartBtn.Size = UDim2.new(1, -20, 0, 45)
 StartBtn.Position = UDim2.new(0, 10, 0, 310)
-StartBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
+StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 StartBtn.BorderSizePixel = 0
 StartBtn.Text = "▶️ BẮT ĐẦU"
 StartBtn.TextColor3 = Color3.fromRGB(255,255,255)
@@ -282,7 +279,7 @@ local function clickButton(btn)
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL — FIX DỪNG NGAY KHI RA TARGET
+-- AUTO ROLL
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
@@ -292,32 +289,28 @@ local function autoRoll()
     local count = 0
     local gotTarget = false
     local targetClan = nil
-    local stopSignal = false  -- ⭐ Flag dừng từ signal
+    local stopSignal = false
     
     local slot = getSlot()
     local conn = nil
     
-    -- ⭐ SIGNAL LISTENER — DỪNG NGAY LẬP TỨC
     if slot and slot:FindFirstChild("Clan") then
         conn = slot.Clan:GetPropertyChangedSignal("Value"):Connect(function()
             local newClan = slot.Clan.Value
             if isTarget(newClan) then
                 gotTarget = true
                 targetClan = newClan
-                stopSignal = true       -- ⭐ Báo dừng
-                isRolling = false       -- ⭐ KILL VÒNG LẶP
+                stopSignal = true
+                isRolling = false
                 log("🎯 SIGNAL: " .. newClan, Color3.fromRGB(100, 255, 200))
             end
         end)
     end
 
-    log("🚀 Auto roll — Target: Uncommon", Color3.fromRGB(100, 200, 255))
+    log("🚀 Auto roll — Target: Supreme", Color3.fromRGB(255, 100, 200))
 
     while isRolling do
-        -- ⭐ CHECK TARGET TRƯỚC
-        if gotTarget or stopSignal then
-            break
-        end
+        if gotTarget or stopSignal then break end
         
         local spins = getSpins()
         SpinsLbl.Text = "Spins: " .. spins
@@ -346,15 +339,11 @@ local function autoRoll()
             pcall(function() SE:FireServer("ClanSpinComplete") end)
         end
 
-        -- ⭐ CHỜ SIGNAL
         local t = tick()
         while tick() - t < 3 do
             task.wait(0.01)
             
-            -- ⭐ DỪNG NGAY NẾU SIGNAL BÁO
-            if gotTarget or stopSignal then
-                break
-            end
+            if gotTarget or stopSignal then break end
             
             if getSpins() < spinsBefore then
                 local c = getClan()
@@ -367,10 +356,7 @@ local function autoRoll()
             end
         end
 
-        -- ⭐ DỪNG NGAY — KHÔNG TĂNG COUNT, KHÔNG LOG
-        if gotTarget or stopSignal then
-            break
-        end
+        if gotTarget or stopSignal then break end
 
         count = count + 1
         RollsLbl.Text = "Quay: " .. count
@@ -391,20 +377,18 @@ local function autoRoll()
         task.wait(0.03)
     end
 
-    -- Cleanup
     if conn then conn:Disconnect() end
 
-    -- BÁO TARGET
     if gotTarget then
         local found = targetClan or getClan() or "???"
-        Status.Text = "🎉 TARGET: " .. found
-        Status.TextColor3 = Color3.fromRGB(100, 255, 200)
-        ClanLbl.TextColor3 = Color3.fromRGB(100, 255, 200)
+        Status.Text = "🎉 SUPREME: " .. found
+        Status.TextColor3 = Color3.fromRGB(255, 215, 0)
+        ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
         ClanLbl.Text = "Clan: " .. found
-        log("🎉🎉 TARGET: " .. found, Color3.fromRGB(100, 255, 200))
+        log("🎉🎉 SUPREME: " .. found, Color3.fromRGB(255, 215, 0))
         pcall(function()
             StarterGui:SetCore("SendNotification", {
-                Title = "🎉 TARGET FOUND!",
+                Title = "🎉 SUPREME FOUND!",
                 Text = found .. " sau " .. count .. " lần",
                 Duration = 30,
             })
@@ -413,7 +397,7 @@ local function autoRoll()
 
     isRolling = false
     StartBtn.Text = "▶️ BẮT ĐẦU"
-    StartBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
+    StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 end
 
 -- ═══════════════════════════════════════════════════════
@@ -495,8 +479,8 @@ ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
 print("═══════════════════════════════════════")
-print("✅ AUTO UNCOMMON (TEST) LOADED!")
+print("✅ AUTO SUPREME FINAL LOADED!")
 print("👤 User: " .. LP.Name)
-print("🎯 Target: Aori, Aoshima, Kaneki, Kurotsume, Yamagiri")
+print("🎯 Target: Kamado, Soyama, Uzui, Rengoku")
 print("⏳ Đợi 5s → sequence → auto roll")
 print("═══════════════════════════════════════")
