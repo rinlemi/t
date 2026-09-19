@@ -1,5 +1,6 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — FULL AUTO (Auto-Execute Safe)
+-- 🎰 AUTO SUPREME HUNTER — SMART WAIT FULL AUTO
+-- Copy → Execute → Chờ → Done
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
@@ -18,23 +19,21 @@ end
 print("✅ LP:", LP.Name)
 
 -- ⭐ 2. CHỜ PLAYERGUI
-local PG = LP:WaitForChild("PlayerGui", 60)
+local PG = LP:WaitForChild("PlayerGui", 120)
 print("✅ PlayerGui:", PG and "OK" or "FAIL")
 
 -- ⭐ 3. CHỜ REMOTE
 local SF, SE
-local t = tick() + 60
-while tick() < t do
+local _t = tick() + 120
+while tick() < _t do
     local comm = RS:FindFirstChild("Communication")
     if comm then
         local sac = comm:FindFirstChild("ServerAndClient")
         if sac then
             local sig = sac:FindFirstChild("Signals")
             if sig then
-                SF = sig:FindFirstChild("SignalFunction") 
-                    and sig.SignalFunction:FindFirstChild("Function")
-                SE = sig:FindFirstChild("SignalEvent")
-                    and sig.SignalEvent:FindFirstChild("Event")
+                SF = sig:FindFirstChild("SignalFunction") and sig.SignalFunction:FindFirstChild("Function")
+                SE = sig:FindFirstChild("SignalEvent") and sig.SignalEvent:FindFirstChild("Event")
                 if SF and SE then break end
             end
         end
@@ -43,21 +42,6 @@ while tick() < t do
 end
 print("✅ SF:", SF and "OK" or "FAIL")
 print("✅ SE:", SE and "OK" or "FAIL")
-
--- ⭐ 4. CHỜ DATA PLAYER
-local t2 = tick() + 60
-while tick() < t2 do
-    local ps = RS:FindFirstChild("Player_Service")
-    if ps then
-        local data = ps:FindFirstChild("Data")
-        if data then
-            local me = data:FindFirstChild(LP.Name)
-            if me then break end
-        end
-    end
-    task.wait(0.3)
-end
-print("✅ Data:", "OK")
 
 -- ⚙️ CẤU HÌNH
 local CODE_1 = "EVILARTSPINS"
@@ -266,6 +250,25 @@ local function isSupreme(name)
     return SUPREME_CLANS[name] == true
 end
 
+-- ⭐ CHỜ CHARACTER (đã vào game thật)
+local function waitForCharacter(timeout)
+    timeout = timeout or 300
+    local t = tick() + timeout
+    
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+        return true
+    end
+    
+    while tick() < t do
+        if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+            return true
+        end
+        task.wait(0.5)
+    end
+    return false
+end
+
+-- ⭐ CHỜ CUSTOMIZE BUTTON
 local function waitForCustomizeButton(timeout)
     timeout = timeout or 60
     local t = tick() + timeout
@@ -281,6 +284,7 @@ local function waitForCustomizeButton(timeout)
     return nil
 end
 
+-- ⭐ CLICK BUTTON 3 CÁCH
 local function clickButton(btn)
     if not btn then return false end
     
@@ -388,24 +392,56 @@ end
 -- ═══════════════════════════════════════════════════════
 
 local function runAutoSequence()
-    Status.Text = "⏳ Đợi game load (5s)..."
-    log("⏳ Đợi game load (5s)", Color3.fromRGB(200, 200, 200))
-    task.wait(5)
+    -- ⭐ 1. CHỜ CHARACTER
+    Status.Text = "⏳ Chờ vào game..."
+    log("⏳ Chờ character (max 5 phút)...", Color3.fromRGB(200, 200, 200))
+    
+    if not waitForCharacter(300) then
+        log("❌ Timeout chờ character", Color3.fromRGB(255, 100, 100))
+        return
+    end
+    
+    log("✅ Đã vào game!", Color3.fromRGB(100, 255, 100))
+    Status.Text = "⏳ Đợi 3s cho game ổn định..."
+    task.wait(3)
 
+    -- ⭐ 2. CHỜ DATA
+    Status.Text = "⏳ Chờ data..."
+    log("⏳ Chờ data load...", Color3.fromRGB(200, 200, 200))
+    
+    local t = tick() + 60
+    while tick() < t do
+        local ps = RS:FindFirstChild("Player_Service")
+        if ps then
+            local data = ps:FindFirstChild("Data")
+            if data then
+                local me = data:FindFirstChild(LP.Name)
+                if me and me:FindFirstChild("slots") then
+                    break
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+    log("✅ Data loaded", Color3.fromRGB(100, 255, 100))
+
+    -- ⭐ 3. CODE 1
     Status.Text = "📝 Nhập code 1..."
     log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
     log("⏳ Đợi " .. STEP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
+    -- ⭐ 4. CODE 2
     Status.Text = "📝 Nhập code 2..."
     log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
     log("⏳ Đợi " .. STEP_DELAY .. "s cho popup đóng...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
+    -- ⭐ 5. CUSTOMIZE
     Status.Text = "🎨 Chờ Customize..."
-    log("🎨 Chờ Customize button...", Color3.fromRGB(200, 100, 255))
+    log("🎨 Tìm Customize button...", Color3.fromRGB(200, 100, 255))
     
     local btn = waitForCustomizeButton(60)
     
@@ -414,7 +450,7 @@ local function runAutoSequence()
         log("   Visible: " .. tostring(btn.Visible), Color3.fromRGB(200, 200, 200))
         log("   Active: " .. tostring(btn.Active), Color3.fromRGB(200, 200, 200))
         clickButton(btn)
-        log("✅ Đã click Customize (3 cách)", Color3.fromRGB(100, 255, 100))
+        log("✅ Đã click Customize", Color3.fromRGB(100, 255, 100))
     else
         log("❌ Không tìm thấy Customize sau 60s", Color3.fromRGB(255, 100, 100))
     end
@@ -422,6 +458,7 @@ local function runAutoSequence()
     log("⏳ Đợi menu mở (2s)...", Color3.fromRGB(200, 200, 200))
     task.wait(2)
 
+    -- ⭐ 6. AUTO ROLL
     Status.Text = "🚀 Bắt đầu auto roll..."
     log("🚀 Auto roll Supreme", Color3.fromRGB(255, 100, 200))
     StartBtn.Text = "⏹️ DỪNG"
@@ -452,10 +489,10 @@ end)
 ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
-print("═══════════════════════════════")
-print("✅ FULL AUTO LOADED!")
+print("═══════════════════════════════════════")
+print("✅ SMART WAIT AUTO LOADED!")
 print("👤 User: " .. LP.Name)
 print("📝 Code 1: " .. CODE_1)
 print("📝 Code 2: " .. CODE_2)
-print("⏳ Sẽ tự chạy sau 5 giây...")
-print("═══════════════════════════════")
+print("⏳ Chờ vào game rồi tự chạy...")
+print("═══════════════════════════════════════")
