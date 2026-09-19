@@ -1,28 +1,16 @@
 -- ═══════════════════════════════════════════════════════
--- 🎰 AUTO SUPREME HUNTER — SMART WAIT FULL AUTO
--- Copy → Execute → Chờ → Done
+-- 🎰 AUTO UNCOMMON HUNTER — TEST VERSION
+-- Target: Aori, Aoshima, Kaneki, Kurotsume, Yamagiri
 -- ═══════════════════════════════════════════════════════
 
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
--- ⭐ 1. CHỜ LOCALPLAYER
 local LP = Players.LocalPlayer
-if not LP then
-    print("⏳ Chờ LocalPlayer...")
-    repeat
-        task.wait(0.1)
-        LP = Players.LocalPlayer
-    until LP
-end
-print("✅ LP:", LP.Name)
-
--- ⭐ 2. CHỜ PLAYERGUI
+if not LP then repeat task.wait(0.1); LP = Players.LocalPlayer until LP end
 local PG = LP:WaitForChild("PlayerGui", 120)
-print("✅ PlayerGui:", PG and "OK" or "FAIL")
 
--- ⭐ 3. CHỜ REMOTE
 local SF, SE
 local _t = tick() + 120
 while tick() < _t do
@@ -40,23 +28,23 @@ while tick() < _t do
     end
     task.wait(0.2)
 end
-print("✅ SF:", SF and "OK" or "FAIL")
-print("✅ SE:", SE and "OK" or "FAIL")
 
--- ⚙️ CẤU HÌNH
 local CODE_1 = "EVILARTSPINS"
 local CODE_2 = "SORRYFORSHUTDOWN"
-local ROLL_DELAY = 1.0
 local STEP_DELAY = 2
+local STARTUP_DELAY = 5
 
-local SUPREME_CLANS = {
+-- ⭐ TARGET: UNCOMMON (test)
+local TARGET_CLANS = {
+    -- ⭐ TARGET: SUPREME
+local TARGET_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
 }
+}
 
--- XÓA UI CŨ
 local old = PG:FindFirstChild("AutoRollClanUI")
 if old then old:Destroy() end
 
@@ -81,9 +69,9 @@ Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 45)
-Title.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+Title.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
 Title.BorderSizePixel = 0
-Title.Text = "🎰 AUTO SUPREME"
+Title.Text = "🎰 AUTO UNCOMMON (TEST)"
 Title.TextColor3 = Color3.fromRGB(255,255,255)
 Title.TextScaled = true
 Title.Font = Enum.Font.GothamBold
@@ -201,7 +189,7 @@ end
 local StartBtn = Instance.new("TextButton")
 StartBtn.Size = UDim2.new(1, -20, 0, 45)
 StartBtn.Position = UDim2.new(0, 10, 0, 310)
-StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+StartBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
 StartBtn.BorderSizePixel = 0
 StartBtn.Text = "▶️ BẮT ĐẦU"
 StartBtn.TextColor3 = Color3.fromRGB(255,255,255)
@@ -246,29 +234,21 @@ local function getSpins()
     return s and s.Spinning and s.Spinning.Spins and s.Spinning.Spins.Value or 0
 end
 
-local function isSupreme(name)
-    return SUPREME_CLANS[name] == true
+local function isTarget(name)
+    return TARGET_CLANS[name] == true
 end
 
--- ⭐ CHỜ CHARACTER (đã vào game thật)
 local function waitForCharacter(timeout)
     timeout = timeout or 300
     local t = tick() + timeout
-    
-    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-        return true
-    end
-    
+    if LP.Character and LP.Character:FindFirstChild("Humanoid") then return true end
     while tick() < t do
-        if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-            return true
-        end
+        if LP.Character and LP.Character:FindFirstChild("Humanoid") then return true end
         task.wait(0.5)
     end
     return false
 end
 
--- ⭐ CHỜ CUSTOMIZE BUTTON
 local function waitForCustomizeButton(timeout)
     timeout = timeout or 60
     local t = tick() + timeout
@@ -284,17 +264,13 @@ local function waitForCustomizeButton(timeout)
     return nil
 end
 
--- ⭐ CLICK BUTTON 3 CÁCH
 local function clickButton(btn)
     if not btn then return false end
-    
     pcall(function() btn:Activate() end)
-    
     if firesignal then
         pcall(function() firesignal(btn.MouseButton1Click) end)
         pcall(function() firesignal(btn.Activated) end)
     end
-    
     pcall(function()
         local VIM = game:GetService("VirtualInputManager")
         local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
@@ -302,12 +278,11 @@ local function clickButton(btn)
         task.wait(0.05)
         VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
     end)
-    
     return true
 end
 
 -- ═══════════════════════════════════════════════════════
--- AUTO ROLL
+-- AUTO ROLL — FIX DỪNG NGAY KHI RA TARGET
 -- ═══════════════════════════════════════════════════════
 
 local isRolling = false
@@ -315,10 +290,35 @@ local isRolling = false
 local function autoRoll()
     isRolling = true
     local count = 0
+    local gotTarget = false
+    local targetClan = nil
+    local stopSignal = false  -- ⭐ Flag dừng từ signal
+    
+    local slot = getSlot()
+    local conn = nil
+    
+    -- ⭐ SIGNAL LISTENER — DỪNG NGAY LẬP TỨC
+    if slot and slot:FindFirstChild("Clan") then
+        conn = slot.Clan:GetPropertyChangedSignal("Value"):Connect(function()
+            local newClan = slot.Clan.Value
+            if isTarget(newClan) then
+                gotTarget = true
+                targetClan = newClan
+                stopSignal = true       -- ⭐ Báo dừng
+                isRolling = false       -- ⭐ KILL VÒNG LẶP
+                log("🎯 SIGNAL: " .. newClan, Color3.fromRGB(100, 255, 200))
+            end
+        end)
+    end
 
-    log("🚀 Bắt đầu auto roll", Color3.fromRGB(255, 100, 200))
+    log("🚀 Auto roll — Target: Uncommon", Color3.fromRGB(100, 200, 255))
 
     while isRolling do
+        -- ⭐ CHECK TARGET TRƯỚC
+        if gotTarget or stopSignal then
+            break
+        end
+        
         local spins = getSpins()
         SpinsLbl.Text = "Spins: " .. spins
 
@@ -341,137 +341,143 @@ local function autoRoll()
             break
         end
 
-        task.wait(ROLL_DELAY)
-        pcall(function() SE:FireServer("ClanSpinComplete") end)
+        for i = 1, 5 do
+            task.wait(0.02)
+            pcall(function() SE:FireServer("ClanSpinComplete") end)
+        end
 
-        local timeout = tick() + 5
-        while tick() < timeout do
-            task.wait(0.05)
-            if getClan() ~= clanBefore and getSpins() < spinsBefore then
+        -- ⭐ CHỜ SIGNAL
+        local t = tick()
+        while tick() - t < 3 do
+            task.wait(0.01)
+            
+            -- ⭐ DỪNG NGAY NẾU SIGNAL BÁO
+            if gotTarget or stopSignal then
+                break
+            end
+            
+            if getSpins() < spinsBefore then
+                local c = getClan()
+                if c and isTarget(c) then
+                    gotTarget = true
+                    targetClan = c
+                    stopSignal = true
+                end
                 break
             end
         end
 
+        -- ⭐ DỪNG NGAY — KHÔNG TĂNG COUNT, KHÔNG LOG
+        if gotTarget or stopSignal then
+            break
+        end
+
         count = count + 1
         RollsLbl.Text = "Quay: " .. count
-
+        
         local clan = getClan()
-        local newSpins = getSpins()
         ClanLbl.Text = "Clan: " .. (clan or "---")
-        SpinsLbl.Text = "Spins: " .. newSpins
-
+        SpinsLbl.Text = "Spins: " .. getSpins()
+        
         if clan and clan ~= clanBefore then
             log("#" .. count .. ": " .. clan, Color3.fromRGB(150, 200, 255))
         end
 
-        if clan and isSupreme(clan) then
-            Status.Text = "🎉 SUPREME: " .. clan
-            Status.TextColor3 = Color3.fromRGB(255, 215, 0)
-            ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
-            log("🎉🎉 SUPREME: " .. clan, Color3.fromRGB(255, 215, 0))
-            pcall(function()
-                StarterGui:SetCore("SendNotification", {
-                    Title = "🎉 SUPREME FOUND!",
-                    Text = clan .. " sau " .. count .. " lần",
-                    Duration = 10,
-                })
-            end)
-            break
+        if count % 30 == 0 then
+            log("⏸ Nghỉ 3s...", Color3.fromRGB(255, 220, 100))
+            task.wait(3)
         end
 
-        task.wait(0.3)
+        task.wait(0.03)
+    end
+
+    -- Cleanup
+    if conn then conn:Disconnect() end
+
+    -- BÁO TARGET
+    if gotTarget then
+        local found = targetClan or getClan() or "???"
+        Status.Text = "🎉 TARGET: " .. found
+        Status.TextColor3 = Color3.fromRGB(100, 255, 200)
+        ClanLbl.TextColor3 = Color3.fromRGB(100, 255, 200)
+        ClanLbl.Text = "Clan: " .. found
+        log("🎉🎉 TARGET: " .. found, Color3.fromRGB(100, 255, 200))
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = "🎉 TARGET FOUND!",
+                Text = found .. " sau " .. count .. " lần",
+                Duration = 30,
+            })
+        end)
     end
 
     isRolling = false
     StartBtn.Text = "▶️ BẮT ĐẦU"
-    StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
+    StartBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
 end
 
 -- ═══════════════════════════════════════════════════════
--- SEQUENCE TỰ ĐỘNG
+-- SEQUENCE
 -- ═══════════════════════════════════════════════════════
 
 local function runAutoSequence()
-    -- ⭐ 1. CHỜ CHARACTER
+    Status.Text = "⏳ Đợi " .. STARTUP_DELAY .. "s..."
+    log("⏳ Đợi " .. STARTUP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
+    task.wait(STARTUP_DELAY)
+    
     Status.Text = "⏳ Chờ vào game..."
-    log("⏳ Chờ character (max 5 phút)...", Color3.fromRGB(200, 200, 200))
+    log("⏳ Chờ character...", Color3.fromRGB(200, 200, 200))
     
     if not waitForCharacter(300) then
-        log("❌ Timeout chờ character", Color3.fromRGB(255, 100, 100))
+        log("❌ Timeout character", Color3.fromRGB(255, 100, 100))
         return
     end
     
     log("✅ Đã vào game!", Color3.fromRGB(100, 255, 100))
-    Status.Text = "⏳ Đợi 3s cho game ổn định..."
     task.wait(3)
 
-    -- ⭐ 2. CHỜ DATA
     Status.Text = "⏳ Chờ data..."
-    log("⏳ Chờ data load...", Color3.fromRGB(200, 200, 200))
-    
     local t = tick() + 60
     while tick() < t do
         local ps = RS:FindFirstChild("Player_Service")
-        if ps then
-            local data = ps:FindFirstChild("Data")
-            if data then
-                local me = data:FindFirstChild(LP.Name)
-                if me and me:FindFirstChild("slots") then
-                    break
-                end
-            end
+        if ps and ps:FindFirstChild("Data") and ps.Data:FindFirstChild(LP.Name) then
+            break
         end
         task.wait(0.5)
     end
     log("✅ Data loaded", Color3.fromRGB(100, 255, 100))
 
-    -- ⭐ 3. CODE 1
     Status.Text = "📝 Nhập code 1..."
     log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
-    log("⏳ Đợi " .. STEP_DELAY .. "s...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
-    -- ⭐ 4. CODE 2
     Status.Text = "📝 Nhập code 2..."
     log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
     pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
-    log("⏳ Đợi " .. STEP_DELAY .. "s cho popup đóng...", Color3.fromRGB(200, 200, 200))
     task.wait(STEP_DELAY)
 
-    -- ⭐ 5. CUSTOMIZE
     Status.Text = "🎨 Chờ Customize..."
-    log("🎨 Tìm Customize button...", Color3.fromRGB(200, 100, 255))
+    log("🎨 Tìm Customize...", Color3.fromRGB(200, 100, 255))
     
     local btn = waitForCustomizeButton(60)
-    
     if btn then
         log("✅ Tìm thấy Customize", Color3.fromRGB(100, 255, 100))
-        log("   Visible: " .. tostring(btn.Visible), Color3.fromRGB(200, 200, 200))
-        log("   Active: " .. tostring(btn.Active), Color3.fromRGB(200, 200, 200))
         clickButton(btn)
         log("✅ Đã click Customize", Color3.fromRGB(100, 255, 100))
     else
-        log("❌ Không tìm thấy Customize sau 60s", Color3.fromRGB(255, 100, 100))
+        log("❌ Không tìm thấy Customize", Color3.fromRGB(255, 100, 100))
     end
     
-    log("⏳ Đợi menu mở (2s)...", Color3.fromRGB(200, 200, 200))
     task.wait(2)
 
-    -- ⭐ 6. AUTO ROLL
-    Status.Text = "🚀 Bắt đầu auto roll..."
-    log("🚀 Auto roll Supreme", Color3.fromRGB(255, 100, 200))
+    Status.Text = "🚀 Auto roll..."
     StartBtn.Text = "⏹️ DỪNG"
     StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
     task.spawn(autoRoll)
 end
 
--- ⭐ CHẠY AUTO SEQUENCE
 task.spawn(runAutoSequence)
-
--- ═══════════════════════════════════════════════════════
--- NÚT MANUAL
--- ═══════════════════════════════════════════════════════
 
 StartBtn.MouseButton1Click:Connect(function()
     if isRolling then
@@ -485,14 +491,12 @@ StartBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Khởi tạo UI
 ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins: " .. getSpins()
 
 print("═══════════════════════════════════════")
-print("✅ SMART WAIT AUTO LOADED!")
+print("✅ AUTO UNCOMMON (TEST) LOADED!")
 print("👤 User: " .. LP.Name)
-print("📝 Code 1: " .. CODE_1)
-print("📝 Code 2: " .. CODE_2)
-print("⏳ Chờ vào game rồi tự chạy...")
+print("🎯 Target: Aori, Aoshima, Kaneki, Kurotsume, Yamagiri")
+print("⏳ Đợi 5s → sequence → auto roll")
 print("═══════════════════════════════════════")
