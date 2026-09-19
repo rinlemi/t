@@ -175,7 +175,7 @@ Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
 -- ===== DELAY CONTROL =====
-local rollDelay = 1.5 -- Mặc định 0.8s, đủ để game animation chạy
+local rollDelay = 1 -- Mặc định 0.8s, đủ để game animation chạy
 local delayStep = 0.1
 local delayMin = 0.3
 local delayMax = 3.0
