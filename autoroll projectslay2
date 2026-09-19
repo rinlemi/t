@@ -6,27 +6,24 @@ local LP = Players.LocalPlayer
 local SF = RS.Communication.ServerAndClient.Signals.SignalFunction.Function
 local SE = RS.Communication.ServerAndClient.Signals.SignalEvent.Event
 
--- ✅ FIX #3: Thêm Rengoku
 local SUPREME_CLANS = {
     ["Kamado"] = true,
     ["Soyama"] = true,
     ["Uzui"] = true,
-    ["Rengoku"] = true,  -- Thêm vào
+    ["Rengoku"] = true,
 }
 
--- Xóa UI cũ
 local old = LP.PlayerGui:FindFirstChild("AutoRollClanUI")
 if old then old:Destroy() end
 
--- ===== UI =====
 local SG = Instance.new("ScreenGui")
 SG.Name = "AutoRollClanUI"
 SG.ResetOnSpawn = false
 SG.Parent = LP.PlayerGui
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 300, 0, 340)
-Main.Position = UDim2.new(0, 20, 0.5, -170)
+Main.Size = UDim2.new(0, 300, 0, 360)
+Main.Position = UDim2.new(0, 20, 0.5, -180)
 Main.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -58,7 +55,7 @@ Status.Parent = Main
 
 local RollsLbl = Instance.new("TextLabel")
 RollsLbl.Size = UDim2.new(1, -20, 0, 25)
-RollsLbl.Position = UDim2.new(0, 10, 0, 85)
+RollsLbl.Position = UDim2.new(0, 10, 0, 90)
 RollsLbl.BackgroundTransparency = 1
 RollsLbl.Text = "Đã quay: 0 lần"
 RollsLbl.TextColor3 = Color3.fromRGB(200,200,200)
@@ -69,7 +66,7 @@ RollsLbl.Parent = Main
 
 local ClanLbl = Instance.new("TextLabel")
 ClanLbl.Size = UDim2.new(1, -20, 0, 30)
-ClanLbl.Position = UDim2.new(0, 10, 0, 115)
+ClanLbl.Position = UDim2.new(0, 10, 0, 120)
 ClanLbl.BackgroundTransparency = 1
 ClanLbl.Text = "Clan: ---"
 ClanLbl.TextColor3 = Color3.fromRGB(100,255,100)
@@ -80,7 +77,7 @@ ClanLbl.Parent = Main
 
 local SpinsLbl = Instance.new("TextLabel")
 SpinsLbl.Size = UDim2.new(1, -20, 0, 25)
-SpinsLbl.Position = UDim2.new(0, 10, 0, 150)
+SpinsLbl.Position = UDim2.new(0, 10, 0, 155)
 SpinsLbl.BackgroundTransparency = 1
 SpinsLbl.Text = "Spins còn: ---"
 SpinsLbl.TextColor3 = Color3.fromRGB(255,220,100)
@@ -91,7 +88,7 @@ SpinsLbl.Parent = Main
 
 local InfoLbl = Instance.new("TextLabel")
 InfoLbl.Size = UDim2.new(1, -20, 0, 30)
-InfoLbl.Position = UDim2.new(0, 10, 0, 180)
+InfoLbl.Position = UDim2.new(0, 10, 0, 185)
 InfoLbl.BackgroundTransparency = 1
 InfoLbl.Text = "🎯 Target: SUPREME (0.025%)"
 InfoLbl.TextColor3 = Color3.fromRGB(255, 100, 200)
@@ -100,9 +97,61 @@ InfoLbl.Font = Enum.Font.Gotham
 InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
 InfoLbl.Parent = Main
 
+-- Thanh delay slider label
+local DelayLbl = Instance.new("TextLabel")
+DelayLbl.Size = UDim2.new(1, -20, 0, 25)
+DelayLbl.Position = UDim2.new(0, 10, 0, 220)
+DelayLbl.BackgroundTransparency = 1
+DelayLbl.Text = "⏱ Delay mỗi roll: 0.8s"
+DelayLbl.TextColor3 = Color3.fromRGB(150,220,255)
+DelayLbl.TextScaled = true
+DelayLbl.Font = Enum.Font.Gotham
+DelayLbl.TextXAlignment = Enum.TextXAlignment.Left
+DelayLbl.Parent = Main
+
+-- Nút tăng/giảm delay
+local DelayFrame = Instance.new("Frame")
+DelayFrame.Size = UDim2.new(1, -20, 0, 30)
+DelayFrame.Position = UDim2.new(0, 10, 0, 248)
+DelayFrame.BackgroundTransparency = 1
+DelayFrame.Parent = Main
+
+local BtnMinus = Instance.new("TextButton")
+BtnMinus.Size = UDim2.new(0, 50, 1, 0)
+BtnMinus.Position = UDim2.new(0, 0, 0, 0)
+BtnMinus.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+BtnMinus.Text = "−"
+BtnMinus.TextColor3 = Color3.fromRGB(255,255,255)
+BtnMinus.TextScaled = true
+BtnMinus.Font = Enum.Font.GothamBold
+BtnMinus.Parent = DelayFrame
+Instance.new("UICorner", BtnMinus).CornerRadius = UDim.new(0, 6)
+
+local DelayValLbl = Instance.new("TextLabel")
+DelayValLbl.Size = UDim2.new(1, -110, 1, 0)
+DelayValLbl.Position = UDim2.new(0, 55, 0, 0)
+DelayValLbl.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+DelayValLbl.Text = "0.8s"
+DelayValLbl.TextColor3 = Color3.fromRGB(255,255,255)
+DelayValLbl.TextScaled = true
+DelayValLbl.Font = Enum.Font.GothamBold
+DelayValLbl.Parent = DelayFrame
+Instance.new("UICorner", DelayValLbl).CornerRadius = UDim.new(0, 6)
+
+local BtnPlus = Instance.new("TextButton")
+BtnPlus.Size = UDim2.new(0, 50, 1, 0)
+BtnPlus.Position = UDim2.new(1, -50, 0, 0)
+BtnPlus.BackgroundColor3 = Color3.fromRGB(60, 160, 60)
+BtnPlus.Text = "+"
+BtnPlus.TextColor3 = Color3.fromRGB(255,255,255)
+BtnPlus.TextScaled = true
+BtnPlus.Font = Enum.Font.GothamBold
+BtnPlus.Parent = DelayFrame
+Instance.new("UICorner", BtnPlus).CornerRadius = UDim.new(0, 6)
+
 local StartBtn = Instance.new("TextButton")
 StartBtn.Size = UDim2.new(1, -20, 0, 45)
-StartBtn.Position = UDim2.new(0, 10, 0, 220)
+StartBtn.Position = UDim2.new(0, 10, 0, 290)
 StartBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 180)
 StartBtn.BorderSizePixel = 0
 StartBtn.Text = "▶️ BẮT ĐẦU"
@@ -125,10 +174,34 @@ CloseBtn.Parent = Main
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 12)
 CloseBtn.MouseButton1Click:Connect(function() SG:Destroy() end)
 
+-- ===== DELAY CONTROL =====
+local rollDelay = 0.8 -- Mặc định 0.8s, đủ để game animation chạy
+local delayStep = 0.1
+local delayMin = 0.3
+local delayMax = 3.0
+
+local function updateDelayUI()
+    local rounded = math.floor(rollDelay * 10 + 0.5) / 10
+    DelayValLbl.Text = rounded .. "s"
+    DelayLbl.Text = "⏱ Delay mỗi roll: " .. rounded .. "s"
+end
+
+BtnMinus.MouseButton1Click:Connect(function()
+    rollDelay = math.max(delayMin, rollDelay - delayStep)
+    updateDelayUI()
+end)
+
+BtnPlus.MouseButton1Click:Connect(function()
+    rollDelay = math.min(delayMax, rollDelay + delayStep)
+    updateDelayUI()
+end)
+
 -- ===== HELPERS =====
 local function getSlot()
     local data = RS:FindFirstChild("Player_Service"):FindFirstChild("Data"):FindFirstChild(LP.Name)
-    return data.slots["Slot" .. data.slotEquipped.Value]
+    if not data then return nil end
+    local equipped = data.slotEquipped and data.slotEquipped.Value or 1
+    return data.slots["Slot" .. equipped]
 end
 
 local function getClan()
@@ -165,7 +238,6 @@ local function autoRoll()
         Status.Text = "🔄 Đang quay..."
         Status.TextColor3 = Color3.fromRGB(255,220,100)
 
-        -- ✅ FIX #2: Lưu cả clanBefore VÀ spinsBefore
         local clanBefore = getClan()
         local spinsBefore = getSpins()
 
@@ -175,13 +247,15 @@ local function autoRoll()
             break
         end
 
-        task.wait(0.1)
+        -- Đợi animation game chạy xong theo delay người dùng chọn
+        task.wait(rollDelay)
+
         pcall(function() SE:FireServer("ClanSpinComplete") end)
 
-        -- ✅ FIX #2: Poll check CẢ 2 điều kiện
+        -- Poll chờ server cập nhật clan (tối đa 5 giây)
         local timeout = tick() + 5
         while tick() < timeout do
-            task.wait(0.02)  -- Poll nhanh hơn (20ms thay vì 100ms)
+            task.wait(0.05)
             if getClan() ~= clanBefore and getSpins() < spinsBefore then
                 break
             end
@@ -192,22 +266,28 @@ local function autoRoll()
 
         local clan = getClan()
         local newSpins = getSpins()
-        if clan then ClanLbl.Text = "Clan: " .. clan end
+        if clan then
+            ClanLbl.Text = "Clan: " .. clan
+            ClanLbl.TextColor3 = Color3.fromRGB(100,255,100)
+        end
         SpinsLbl.Text = "Spins còn: " .. newSpins
 
         if clan and isSupreme(clan) then
             Status.Text = "🎉 SUPREME: " .. clan
             Status.TextColor3 = Color3.fromRGB(255, 215, 0)
             ClanLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
-            game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = "🎉 SUPREME FOUND!",
-                Text = clan .. " sau " .. count .. " lần",
-                Duration = 10,
-            })
+            pcall(function()
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "🎉 SUPREME FOUND!",
+                    Text = clan .. " sau " .. count .. " lần",
+                    Duration = 10,
+                })
+            end)
             break
         end
 
-        task.wait(0.1)  -- ✅ Giảm từ 0.3s → 0.1s
+        -- Đợi thêm 0.3s giữa các lần roll để ổn định
+        task.wait(0.3)
     end
 
     isRolling = false
@@ -218,6 +298,8 @@ end
 StartBtn.MouseButton1Click:Connect(function()
     if isRolling then
         isRolling = false
+        Status.Text = "⏹ Đã dừng."
+        Status.TextColor3 = Color3.fromRGB(200,200,200)
     else
         StartBtn.Text = "⏹️ DỪNG"
         StartBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
@@ -225,9 +307,10 @@ StartBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Khởi tạo UI
+updateDelayUI()
 Status.Text = "Sẵn sàng. Bấm BẮT ĐẦU."
 ClanLbl.Text = "Clan: " .. (getClan() or "---")
 SpinsLbl.Text = "Spins còn: " .. getSpins()
 
-print("✅ UI Auto Supreme đã load!")
-print("🎯 Target: " .. table.concat((function() local t={} for k in pairs(SUPREME_CLANS) do table.insert(t,k) end return t end)(), ", "))
+print("✅ Auto Supreme loaded! Dùng nút + / − để chỉnh tốc độ roll.")
