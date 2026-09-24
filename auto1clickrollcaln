@@ -29,7 +29,7 @@ while tick() < _t do
 end
 
 local CODE_1 = "SPINS50"
-local CODE_2 = "nil"
+local CODE_2 = "RELEASE26"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
 
@@ -408,10 +408,14 @@ local function runAutoSequence()
     end
 
     Status.Text = "📝 Nhập code 1..."
-    log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
-    pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
-    task.wait(STEP_DELAY)
+log("📝 Code 1: " .. CODE_1, Color3.fromRGB(100, 200, 255))
+pcall(function() SF:InvokeServer("RedeemCode", CODE_1) end)
+task.wait(STEP_DELAY)
 
+Status.Text = "📝 Nhập code 2..."
+log("📝 Code 2: " .. CODE_2, Color3.fromRGB(100, 200, 255))
+pcall(function() SF:InvokeServer("RedeemCode", CODE_2) end)
+task.wait(STEP_DELAY)
 
     Status.Text = "🎨 Chờ Customize..."
     log("🎨 Tìm Customize...", Color3.fromRGB(200, 100, 255))
