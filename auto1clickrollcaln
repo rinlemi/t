@@ -29,7 +29,7 @@ while tick() < _t do
 end
 
 local CODE_1 = "SPINS50"
-local CODE_2 = "RELEASE26"
+local CODE_2 = "ANIM4L"
 local STEP_DELAY = 2
 local STARTUP_DELAY = 5
 
@@ -43,7 +43,6 @@ local TARGET_CLANS = {
     ["Soyama"] = true,
     ["Uzui"] = true,
     ["Rengoku"] = true,
-    -- ["Aori"] = true,  -- Test
 }
 
 local old = PG:FindFirstChild("AutoRollClanUI")
