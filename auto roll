@@ -10,10 +10,10 @@ local TeleportService = game:GetService("TeleportService")
 local player         = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLANS = {"Tenseigan", "Uchiha Itachi"}
+local TARGET_CLANS = {"Six Paths"}
 local SPIN_DELAY   = 1
-local MAX_SPINS    = 7
-local INDEX_SLOT   = 2
+local MAX_SPINS    = 200
+local INDEX_SLOT   = 1
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
