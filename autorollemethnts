@@ -10,10 +10,10 @@ local TeleportService = game:GetService("TeleportService")
 local player          = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_ELEMENTS = {"Blood"}
+local TARGET_ELEMENTS = {"Powder Snow"}
 local SPIN_DELAY      = 1
-local MAX_SPINS       = 193
-local INDEX_SLOT      = 2
+local MAX_SPINS       = 101
+local INDEX_SLOT      = 1
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
