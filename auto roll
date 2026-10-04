@@ -12,7 +12,7 @@ local player         = Players.LocalPlayer
 -- ===================== CONFIG =====================
 local TARGET_CLANS = {"Six Paths"}
 local SPIN_DELAY   = 1
-local MAX_SPINS    = 75
+local MAX_SPINS    = 68
 local INDEX_SLOT   = 1
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
