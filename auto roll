@@ -253,7 +253,7 @@ end)
 
 -- ===================== AUTO START 15S =====================
 task.spawn(function()
-    for i = 15, 1, -1 do
+    for i = 2, 1, -1 do
         if spinning then return end
         statusLbl.Text="⏳ Tự động bắt đầu sau "..i.."s..."; statusLbl.TextColor3=C.yellow
         task.wait(1)
