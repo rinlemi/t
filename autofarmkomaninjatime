@@ -47,11 +47,11 @@ print("========================================")
 
 -- BƯỚC 1
 print("⏳ Bước 1: Đợi 15s...")
-task.wait(25)
+task.wait(30)
 
 -- BƯỚC 2
 print("⌨️ Bước 2: Nhấn Alt")
-pressKey(Enum.KeyCode.LeftAlt, 0.1)
+pressKey(Enum.KeyCode.N, 0.1)
 task.wait(0.5)
 
 -- ===================== BƯỚC 3 =====================
