@@ -47,7 +47,7 @@ print("========================================")
 
 -- BƯỚC 1
 print("⏳ Bước 1: Đợi 15s...")
-task.wait(30)
+task.wait(32)
 
 -- BƯỚC 2
 print("⌨️ Bước 2: Nhấn Alt")
