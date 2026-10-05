@@ -197,17 +197,24 @@ VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.G, false, game)
 print("   ✅ Xong G")
 task.wait(0.5)
 
--- ====================== BƯỚC 8: GIỮ R ======================
-print("⏳ Bước 8: Đợi 1s trước khi giữ R...")
+-- ====================== BƯỚC 8: T → GIỮ R ======================
+print("⏳ Bước 8: Đợi 1s rồi bấm T...")
+task.wait(1)
+
+print("⌨️ Bấm T")
+pressKey(Enum.KeyCode.T, 0.1)
+
+print("⏳ Đợi 2s rồi giữ R...")
 task.wait(2)
 
 local R = Enum.KeyCode.R
-VirtualInputManager:SendKeyEvent(true, R, false, game)
-print("🔒 Bắt đầu giữ R")
+print("🔒 Bắt đầu giữ R vĩnh viễn")
 
 task.spawn(function()
     while true do
-        task.wait(0.1)
-        VirtualInputManager:SendKeyEvent(true, R, false, game)
+        VirtualInputManager:SendKeyEvent(true,  R, false, game)
+        task.wait(0.05)
+        VirtualInputManager:SendKeyEvent(false, R, false, game)
+        task.wait(0.15)
     end
 end)
