@@ -208,13 +208,7 @@ print("⏳ Đợi 2s rồi giữ R...")
 task.wait(2)
 
 local R = Enum.KeyCode.R
-print("🔒 Bắt đầu giữ R vĩnh viễn")
-
-task.spawn(function()
-    while true do
-        VirtualInputManager:SendKeyEvent(true,  R, false, game)
-        task.wait(0.05)
-        VirtualInputManager:SendKeyEvent(false, R, false, game)
-        task.wait(0.15)
+print("🔒 Giữ R vĩnh viễn")
+VirtualInputManager:SendKeyEvent(true, R, false, game)
     end
 end)
