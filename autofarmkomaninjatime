@@ -1,31 +1,33 @@
 -- ============================================================
---  RAID AUTO v19  -  Tuanh Script
---  Zoom 100/60 → G 0.5s → Giữ R vĩnh viễn (KHÔNG Retry)
+--  RAID AUTO v20  -  Tuanh Script
+--  Click Start có kiểm tra + click lại → Zoom → G → Giữ R
 -- ============================================================
 
 local Players             = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local GuiService          = game:GetService("GuiService")
-local UserInputService    = game:GetService("UserInputService")
 local Workspace           = game:GetService("Workspace")
 
 local player    = Players.LocalPlayer
-local playerGui = player.PlayerGui
+local playerGui = player:WaitForChild("PlayerGui")
 local camera    = Workspace.CurrentCamera
 
 -- ===================== HÀM TIỆN ÍCH =====================
 
 local function clickGui(btn)
     if not btn or not btn:IsA("GuiObject") then return false end
-    if not btn:IsA("GuiButton") then
-        pcall(function() btn.Active = true end)
-    end
     local center = btn.AbsolutePosition + btn.AbsoluteSize / 2
-    local inset  = GuiService:GetGuiInset()
-    local x = math.floor(center.X + inset.X)
-    local y = math.floor(center.Y + inset.Y)
+    local sg = btn:FindFirstAncestorOfClass("ScreenGui")
+    local x, y = center.X, center.Y
+    -- chỉ cộng inset khi ScreenGui KHÔNG ignore inset
+    if sg and not sg.IgnoreGuiInset then
+        local inset = GuiService:GetGuiInset()
+        x += inset.X
+        y += inset.Y
+    end
+    x, y = math.floor(x), math.floor(y)
     VirtualInputManager:SendMouseMoveEvent(x, y, game)
-    task.wait(0.05)
+    task.wait(0.15)
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 1)
     task.wait(0.05)
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
@@ -42,15 +44,15 @@ end
 
 -- ===================== MAIN =====================
 print("========================================")
-print("🎬 RAID AUTO v19 (không Retry)")
+print("🎬 RAID AUTO v20")
 print("========================================")
 
 -- BƯỚC 1
-print("⏳ Bước 1: Đợi 15s...")
+print("⏳ Bước 1: Đợi 32s...")
 task.wait(32)
 
 -- BƯỚC 2
-print("⌨️ Bước 2: Nhấn Alt")
+print("⌨️ Bước 2: Nhấn N")
 pressKey(Enum.KeyCode.N, 0.1)
 task.wait(0.5)
 
@@ -66,6 +68,15 @@ local function isStartReallyVisible(btn)
     if not btn or not btn.Parent then return false end
     if not btn.Visible then return false end
     if btn.AbsoluteSize.X < 5 or btn.AbsoluteSize.Y < 5 then return false end
+
+    -- check tất cả cha: ScreenGui.Enabled và Frame.Visible
+    local o = btn.Parent
+    while o do
+        if o:IsA("ScreenGui") and not o.Enabled then return false end
+        if o:IsA("GuiObject") and not o.Visible then return false end
+        o = o.Parent
+    end
+
     local pos  = btn.AbsolutePosition
     local size = btn.AbsoluteSize
     local vp   = camera.ViewportSize
@@ -100,8 +111,32 @@ if not startBtn then
     return
 end
 
-print("🎯 Click StartButton (1 lần)")
-clickGui(startBtn)
+-- Click + kiểm tra, không ăn thì click lại
+local MAX_TRY = 8
+local clicked = false
+
+for attempt = 1, MAX_TRY do
+    local sb = getStartBtn()
+    if not isStartReallyVisible(sb) then
+        clicked = true
+        print("   ✅ StartButton đã biến mất → click thành công")
+        break
+    end
+    print(string.format("🎯 Click StartButton (lần %d/%d)", attempt, MAX_TRY))
+    clickGui(sb)
+    task.wait(1)
+    if not isStartReallyVisible(getStartBtn()) then
+        clicked = true
+        print("   ✅ Click ăn!")
+        break
+    end
+    warn("   ⚠️ Nút vẫn còn, click lại...")
+end
+
+if not clicked then
+    warn("❌ Click " .. MAX_TRY .. " lần vẫn không ăn — dừng, KHÔNG teleport")
+    return
+end
 task.wait(1)
 
 -- BƯỚC 4
@@ -172,12 +207,8 @@ task.wait(0.5)
 print("⏳ Bước 8: Đợi 1s trước khi giữ R...")
 task.wait(1)
 
-print("⌨️ Bắt đầu giữ R")
-
 local R = Enum.KeyCode.R
-
 VirtualInputManager:SendKeyEvent(true, R, false, game)
-
 print("🔒 Bắt đầu giữ R")
 
 task.spawn(function()
