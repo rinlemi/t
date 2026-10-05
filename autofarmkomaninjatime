@@ -210,5 +210,3 @@ task.wait(2)
 local R = Enum.KeyCode.R
 print("🔒 Giữ R vĩnh viễn")
 VirtualInputManager:SendKeyEvent(true, R, false, game)
-    end
-end)
