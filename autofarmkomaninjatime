@@ -1,5 +1,5 @@
 -- ============================================================
---  RAID AUTO v20  -  Tuanh Script
+--  RAID AUTO v21  -  Tuanh Script
 --  Click Start có kiểm tra + click lại → Zoom → G → Giữ R
 -- ============================================================
 
@@ -17,15 +17,9 @@ local camera    = Workspace.CurrentCamera
 local function clickGui(btn)
     if not btn or not btn:IsA("GuiObject") then return false end
     local center = btn.AbsolutePosition + btn.AbsoluteSize / 2
-    local sg = btn:FindFirstAncestorOfClass("ScreenGui")
-    local x, y = center.X, center.Y
-    -- chỉ cộng inset khi ScreenGui KHÔNG ignore inset
-    if sg and not sg.IgnoreGuiInset then
-        local inset = GuiService:GetGuiInset()
-        x += inset.X
-        y += inset.Y
-    end
-    x, y = math.floor(x), math.floor(y)
+    local inset  = GuiService:GetGuiInset()
+    local x = math.floor(center.X + inset.X)
+    local y = math.floor(center.Y + inset.Y)
     VirtualInputManager:SendMouseMoveEvent(x, y, game)
     task.wait(0.15)
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 1)
@@ -44,7 +38,7 @@ end
 
 -- ===================== MAIN =====================
 print("========================================")
-print("🎬 RAID AUTO v20")
+print("🎬 RAID AUTO v21")
 print("========================================")
 
 -- BƯỚC 1
