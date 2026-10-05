@@ -11,10 +11,10 @@ local TeleportService = game:GetService("TeleportService")
 local player          = Players.LocalPlayer
 
 -- ===================== CONFIG =====================
-local TARGET_CLANS = {"Six Paths"}
+local TARGET_CLANS = {"Uchiha Shisui","Uchiha Itachi","Uchiha Sasuke","Uchiha Madara","Uchiha Indra","Uchiha Obito"}
 local SPIN_DELAY   = 1      -- delay sau mỗi slot
 local SLOT_GAP     = 0.8   -- delay giữa slot 1 và slot 2
-local MAX_SPINS    = 200     -- tổng spin cả 2 slot trước khi rejoin
+local MAX_SPINS    = 85     -- tổng spin cả 2 slot trước khi rejoin
 
 local SPIN_REMOTE = RS:WaitForChild("_remotes"):WaitForChild("SpinDataFunction")
 
