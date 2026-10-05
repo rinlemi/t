@@ -199,7 +199,7 @@ task.wait(0.5)
 
 -- ====================== BƯỚC 8: GIỮ R ======================
 print("⏳ Bước 8: Đợi 1s trước khi giữ R...")
-task.wait(1)
+task.wait(2)
 
 local R = Enum.KeyCode.R
 VirtualInputManager:SendKeyEvent(true, R, false, game)
