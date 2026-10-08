@@ -167,7 +167,7 @@ task.wait(0.4)
 local character = player.Character or player.CharacterAdded:Wait()
 local hrp       = character:WaitForChild("HumanoidRootPart")
 
-local X, Y, Z  = -428.026, 175, 171.378
+local X, Y, Z  = -428.026, 180, 171.378
 local floatCF  = CFrame.new(X, Y, Z)
 
 hrp.CFrame        = floatCF
@@ -179,7 +179,7 @@ local floatConn = RunService.Heartbeat:Connect(function()
     hrp.Velocity    = Vector3.zero
     hrp.RotVelocity = Vector3.zero
 end)
-print("✅ Đã teleport + đang treo tại Y=175")
+print("✅ Đã teleport + đang treo tại Y=180")
 
 -- BƯỚC 6: CAMERA
 print("📷 Bước 6: Chỉnh camera nhìn từ trên xuống...")
