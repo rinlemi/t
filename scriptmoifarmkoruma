@@ -1,0 +1,80 @@
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+local function getBoss()
+    local e = Workspace:FindFirstChild("Entities")
+    if not e then return nil end
+    return e:FindFirstChild("Koroma")
+end
+
+-- Chờ 3s khởi động
+print("⏳ Khởi động sau 3s...")
+task.wait(1); print("3...")
+task.wait(1); print("2...")
+task.wait(1); print("1... BẮT ĐẦU!")
+
+-- ===== TP + FLOAT =====
+print("🚀 TP lên đầu boss + treo...")
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+local X, Y, Z = -428.026, 110, 171.378
+local floatCF = CFrame.new(X, Y, Z)
+
+hrp.CFrame = floatCF
+hrp.Velocity = Vector3.zero
+
+local floatConn = RunService.Heartbeat:Connect(function()
+    hrp.CFrame = floatCF
+    hrp.Velocity = Vector3.zero
+    hrp.RotVelocity = Vector3.zero
+end)
+print("✅ Đang treo tại Y=110")
+task.wait(0.5)
+
+-- ===== AIM LIÊN TỤC =====
+print("🎯 Bắt đầu aim vào boss...")
+local aimConn = RunService.Heartbeat:Connect(function()
+    local boss = getBoss()
+    if not boss then return end
+    local bossHRP = boss:FindFirstChild("HumanoidRootPart")
+    if not bossHRP then return end
+    local screenPos, onScreen = camera:WorldToScreenPoint(bossHRP.Position)
+    if onScreen then
+        VirtualInputManager:SendMouseMoveEvent(
+            math.floor(screenPos.X),
+            math.floor(screenPos.Y),
+            game
+        )
+    end
+end)
+print("✅ Đang aim boss")
+task.wait(0.5)
+
+-- ===== G 0.5s =====
+print("⌨️ Giữ G 0.5s...")
+VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.G, false, game)
+task.wait(0.5)
+VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.G, false, game)
+print("✅ Xong G")
+
+-- ===== CHỜ 2s =====
+print("⏳ Chờ 2s...")
+task.wait(2)
+
+-- ===== GIỮ R MÃI =====
+print("🔒 Giữ R liên tục + aim boss...")
+local rConn = RunService.Heartbeat:Connect(function()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+end)
+
+print("✅ ĐANG CHẠY! Để dừng chạy lệnh:")
+print("floatConn:Disconnect()")
+print("aimConn:Disconnect()")
+print("rConn:Disconnect()")
+print("VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)")
