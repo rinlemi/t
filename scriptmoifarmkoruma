@@ -1,10 +1,41 @@
-local Players = game:GetService("Players")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
+-- ============================================================
+--  RAID AUTO v22  -  Tuanh Script
+--  Flow mới: Float + Aim + Camera + Auto Retry
+-- ============================================================
 
-local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
+local Players             = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService          = game:GetService("GuiService")
+local RunService          = game:GetService("RunService")
+local Workspace           = game:GetService("Workspace")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera    = Workspace.CurrentCamera
+
+-- ===================== HÀM TIỆN ÍCH =====================
+
+local function clickGui(btn)
+    if not btn or not btn:IsA("GuiObject") then return false end
+    local center = btn.AbsolutePosition + btn.AbsoluteSize / 2
+    local inset  = GuiService:GetGuiInset()
+    local x = math.floor(center.X + inset.X)
+    local y = math.floor(center.Y + inset.Y)
+    VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    task.wait(0.15)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+    print(string.format("   🖱 Click (%d,%d) → %s", x, y, btn.Name))
+    return true
+end
+
+local function pressKey(keyCode, holdTime)
+    holdTime = holdTime or 0.05
+    VirtualInputManager:SendKeyEvent(true,  keyCode, false, game)
+    task.wait(holdTime)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
 
 local function getBoss()
     local e = Workspace:FindFirstChild("Entities")
@@ -12,43 +43,174 @@ local function getBoss()
     return e:FindFirstChild("Koroma")
 end
 
--- Chờ 3s khởi động
-print("⏳ Khởi động sau 3s...")
-task.wait(1); print("3...")
-task.wait(1); print("2...")
-task.wait(1); print("1... BẮT ĐẦU!")
+local function isRetryReallyVisible()
+    local ok, result = pcall(function()
+        local raidGUI       = playerGui.Interface.RaidGUI
+        local buttons       = raidGUI.RaidUI.Buttons
+        local rewardButtons = buttons["Reward Screen Buttons"]
+        local retry         = rewardButtons.Retry
+        return raidGUI.Enabled == true
+            and buttons.Visible == true
+            and rewardButtons.Visible == true
+            and retry.Visible == true
+            and retry.AbsoluteSize.X > 5
+    end)
+    return ok and result
+end
 
--- ===== TP + FLOAT =====
-print("🚀 TP lên đầu boss + treo...")
-local character = player.Character or player.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
+-- ===================== MAIN =====================
+print("========================================")
+print("🎬 RAID AUTO v22")
+print("========================================")
 
-local X, Y, Z = -428.026, 110, 171.378
-local floatCF = CFrame.new(X, Y, Z)
+-- BƯỚC 1
+print("⏳ Bước 1: Đợi 32s...")
+task.wait(32)
 
-hrp.CFrame = floatCF
-hrp.Velocity = Vector3.zero
-
-local floatConn = RunService.Heartbeat:Connect(function()
-    hrp.CFrame = floatCF
-    hrp.Velocity = Vector3.zero
-    hrp.RotVelocity = Vector3.zero
-end)
-print("✅ Đang treo tại Y=110")
+-- BƯỚC 2
+print("⌨️ Bước 2: Nhấn N")
+pressKey(Enum.KeyCode.N, 0.1)
 task.wait(0.5)
 
--- ===== CAMERA NHÌN TỪ TRÊN XUỐNG =====
-print("📷 Chỉnh camera nhìn từ trên xuống...")
+-- ===================== BƯỚC 3 =====================
+print("🔍 Bước 3: Đợi StartButton thực sự hiện...")
+
+local function getStartBtn()
+    local rv = playerGui:FindFirstChild("RaidStartVoteUI")
+    return rv and rv:FindFirstChild("StartButton")
+end
+
+local function isStartReallyVisible(btn)
+    if not btn or not btn.Parent then return false end
+    if not btn.Visible then return false end
+    if btn.AbsoluteSize.X < 5 or btn.AbsoluteSize.Y < 5 then return false end
+    local o = btn.Parent
+    while o do
+        if o:IsA("ScreenGui") and not o.Enabled then return false end
+        if o:IsA("GuiObject") and not o.Visible then return false end
+        o = o.Parent
+    end
+    local pos  = btn.AbsolutePosition
+    local size = btn.AbsoluteSize
+    local vp   = camera.ViewportSize
+    if pos.X < 0 or pos.Y < 0 then return false end
+    if pos.X + size.X > vp.X or pos.Y + size.Y > vp.Y then return false end
+    return true
+end
+
+local startBtn
+local stableCount = 0
+local lastFound   = nil
+local t0          = os.clock()
+
+while os.clock() - t0 < 120 do
+    local sb = getStartBtn()
+    if isStartReallyVisible(sb) then
+        if sb == lastFound then stableCount += 1 else stableCount = 1; lastFound = sb end
+        if stableCount >= 3 then
+            startBtn = sb
+            print("   🎯 StartButton thực sự hiện! Pos:", sb.AbsolutePosition)
+            break
+        end
+    else
+        stableCount = 0
+        lastFound   = nil
+    end
+    task.wait(0.5)
+end
+
+if not startBtn then
+    warn("❌ Không thấy StartButton sau 120s — dừng")
+    return
+end
+
+-- Click + kiểm tra
+local MAX_TRY = 8
+local clicked = false
+
+for attempt = 1, MAX_TRY do
+    local sb = getStartBtn()
+    if not isStartReallyVisible(sb) then
+        clicked = true
+        print("   ✅ StartButton đã biến mất → click thành công")
+        break
+    end
+    print(string.format("🎯 Click StartButton (lần %d/%d)", attempt, MAX_TRY))
+    clickGui(sb)
+    task.wait(1)
+    if not isStartReallyVisible(getStartBtn()) then
+        clicked = true
+        print("   ✅ Click ăn!")
+        break
+    end
+    warn("   ⚠️ Nút vẫn còn, click lại...")
+end
+
+if not clicked then
+    warn("❌ Click " .. MAX_TRY .. " lần vẫn không ăn — dừng")
+    return
+end
+task.wait(1)
+
+-- BƯỚC 4
+print("⌨️ Bước 4: Space x5")
+for i = 1, 5 do
+    pressKey(Enum.KeyCode.Space, 0.05)
+    task.wait(0.2)
+end
+print("   ✅ Xong Space")
+
+-- BƯỚC 5: TP + FLOAT
+print("⏳ Bước 5: Đợi 0.4s rồi teleport + float...")
+task.wait(0.4)
+
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp       = character:WaitForChild("HumanoidRootPart")
+
+local X, Y, Z  = -428.026, 140, 171.378
+local floatCF  = CFrame.new(X, Y, Z)
+
+hrp.CFrame        = floatCF
+hrp.Velocity      = Vector3.zero
+hrp.RotVelocity   = Vector3.zero
+
+local floatConn = RunService.Heartbeat:Connect(function()
+    hrp.CFrame      = floatCF
+    hrp.Velocity    = Vector3.zero
+    hrp.RotVelocity = Vector3.zero
+end)
+print("✅ Đã teleport + đang treo tại Y=140")
+
+-- BƯỚC 6: CAMERA
+print("📷 Bước 6: Chỉnh camera nhìn từ trên xuống...")
+task.wait(0.3)
 camera.CameraType = Enum.CameraType.Scriptable
 camera.CFrame = CFrame.new(
     Vector3.new(X, Y + 50, Z),
     Vector3.new(X, Y - 50, Z)
 )
-print("✅ Camera đã chỉnh")
-task.wait(0.5)
+print("   ✅ Camera đã chỉnh")
 
--- ===== AIM LIÊN TỤC =====
-print("🎯 Bắt đầu aim vào boss...")
+-- BƯỚC 7: ZOOM
+print("🔍 Bước 7: Zoom...")
+pcall(function()
+    player.CameraMaxZoomDistance = 100
+    player.CameraMinZoomDistance = 100
+end)
+task.wait(0.3)
+pcall(function()
+    player.CameraMinZoomDistance = 1
+end)
+for i = 1, 5 do
+    pcall(function()
+        VirtualInputManager:SendMouseWheelEvent(0, 0, false, -3, game)
+    end)
+    task.wait(0.05)
+end
+print("   ✅ Đã zoom")
+
+-- BƯỚC 8: AIM VÀO BOSS
+print("🎯 Bước 8: Bắt đầu aim vào boss...")
 local aimConn = RunService.Heartbeat:Connect(function()
     local boss = getBoss()
     if not boss then return end
@@ -63,24 +225,47 @@ local aimConn = RunService.Heartbeat:Connect(function()
         )
     end
 end)
-print("✅ Đang aim boss")
+print("   ✅ Đang aim boss")
 task.wait(0.5)
 
--- ===== G 0.5s =====
-print("⌨️ Giữ G 0.5s...")
-VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.G, false, game)
+-- BƯỚC 9: GIỮ G
+print("⌨️ Bước 9: Giữ G 0.5s...")
+VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.G, false, game)
 task.wait(0.5)
 VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.G, false, game)
-print("✅ Xong G")
+print("   ✅ Xong G")
 
--- ===== CHỜ 2s =====
-print("⏳ Chờ 2s...")
+-- BƯỚC 10: CHỜ 2s → GIỮ R
+print("⏳ Bước 10: Chờ 2s rồi giữ R...")
 task.wait(2)
 
--- ===== GIỮ R MÃI =====
-print("🔒 Giữ R liên tục + aim boss...")
 local rConn = RunService.Heartbeat:Connect(function()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
 end)
+print("🔒 Đang giữ R + aim boss liên tục")
 
---
+-- BƯỚC 11: DETECT BOSS CHẾT → RETRY
+print("👁 Bước 11: Theo dõi boss chết...")
+task.spawn(function()
+    while true do
+        if isRetryReallyVisible() then
+            print("💀 Boss chết! Dừng tất cả...")
+            rConn:Disconnect()
+            aimConn:Disconnect()
+            floatConn:Disconnect()
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+            camera.CameraType = Enum.CameraType.Custom
+            print("⏳ Chờ 1s rồi click Retry...")
+            task.wait(1)
+            local btn = playerGui.Interface.RaidGUI.RaidUI.Buttons["Reward Screen Buttons"].Retry
+            clickGui(btn)
+            print("✅ Đã click Retry! Script hoàn tất vòng này")
+            break
+        end
+        task.wait(0.5)
+    end
+end)
+
+print("========================================")
+print("✅ RAID AUTO v22 ĐANG CHẠY FULL AUTO!")
+print("========================================")
