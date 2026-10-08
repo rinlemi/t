@@ -37,6 +37,16 @@ end)
 print("✅ Đang treo tại Y=110")
 task.wait(0.5)
 
+-- ===== CAMERA NHÌN TỪ TRÊN XUỐNG =====
+print("📷 Chỉnh camera nhìn từ trên xuống...")
+camera.CameraType = Enum.CameraType.Scriptable
+camera.CFrame = CFrame.new(
+    Vector3.new(X, Y + 50, Z),
+    Vector3.new(X, Y - 50, Z)
+)
+print("✅ Camera đã chỉnh")
+task.wait(0.5)
+
 -- ===== AIM LIÊN TỤC =====
 print("🎯 Bắt đầu aim vào boss...")
 local aimConn = RunService.Heartbeat:Connect(function()
@@ -73,8 +83,4 @@ local rConn = RunService.Heartbeat:Connect(function()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.R, false, game)
 end)
 
-print("✅ ĐANG CHẠY! Để dừng chạy lệnh:")
-print("floatConn:Disconnect()")
-print("aimConn:Disconnect()")
-print("rConn:Disconnect()")
-print("VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.R, false, game)")
+--
