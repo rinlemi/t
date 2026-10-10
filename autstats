@@ -1,0 +1,131 @@
+local Players = game:GetService("Players")
+local VIM     = game:GetService("VirtualInputManager")
+local GS      = game:GetService("GuiService")
+local Event   = game:GetService("ReplicatedStorage").Modules.Services.RNet.Bridges.AttributesRemote_Function
+local pg      = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+-- ===== CẤU HÌNH =====
+local MAX_STAT    = 84                                -- sửa thành 86... khi game nâng trần
+local ORDER       = {"Chackra", "Gen", "Nin", "Tai"}  -- thứ tự nâng
+local START_DELAY = 20                                -- chờ bao nhiêu giây trước khi chạy
+local DELAY       = 0.6                               -- nghỉ giữa các lần nâng
+local DEBUG       = false                             -- true để xem log trong F9
+
+_G.STOP_STAT = false
+
+local function log(...) if DEBUG then print(...) end end
+
+-- ===== ĐỌC CHỈ SỐ TỪ UI =====
+local function getFrame(id)
+    local i = pg:FindFirstChild("Interface")
+    local a = i and i:FindFirstChild("Attributes")
+    local b = a and a:FindFirstChild("Attributes")
+    return b and b:FindFirstChild(id)
+end
+
+local function readStat(frame)
+    local nt = frame:FindFirstChild("NameText")
+    local v  = nt and nt:FindFirstChild("Value")
+    if v and v:IsA("TextLabel") then
+        local cur = v.Text:match("(%d+)%s*/%s*%d+")
+        return tonumber(cur)
+    end
+end
+
+-- ===== NÚT YES =====
+local function getYes()
+    local i  = pg:FindFirstChild("Interface")
+    local yn = i and i:FindFirstChild("YesOrNo")
+    local op = yn and yn:FindFirstChild("Options")
+    local y  = op and op:FindFirstChild("Yes")
+    if not y then return nil end
+    local p = y
+    while p and p ~= pg do
+        if p:IsA("GuiObject") and not p.Visible then return nil end
+        if p:IsA("ScreenGui") and not p.Enabled then return nil end
+        p = p.Parent
+    end
+    if y.AbsoluteSize.X <= 0 then return nil end
+    return y
+end
+
+local function click(btn)
+    GS.SelectedObject = btn
+    task.wait(0.1)
+    VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+    task.wait(0.05)
+    VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+    task.wait(0.2)
+    GS.SelectedObject = nil
+
+    if getYes() then
+        local pos = btn.AbsolutePosition + btn.AbsoluteSize / 2
+        local y = pos.Y + GS:GetGuiInset().Y
+        VIM:SendMouseButtonEvent(pos.X, y, 0, true, game, 0)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(pos.X, y, 0, false, game, 0)
+    end
+end
+
+-- nâng 1 cấp, trả về true nếu số trên UI tăng lên
+local function bump(id, frame, before)
+    task.spawn(function()
+        pcall(function()
+            Event:InvokeServer({ID = id, Job = "IncreaseLevel"})
+        end)
+    end)
+
+    local t, yes = os.clock(), nil
+    repeat
+        yes = getYes()
+        if not yes then task.wait(0.1) end
+    until yes or os.clock() - t > 5
+    if not yes then return false end
+
+    task.wait(0.2 + math.random() * 0.2)
+    pcall(click, yes)
+
+    -- chờ số trên UI cập nhật tối đa 3 giây
+    t = os.clock()
+    repeat
+        task.wait(0.15)
+        local now = readStat(frame)
+        if now and now > before then return true end
+    until os.clock() - t > 3
+    return false
+end
+
+-- ===== MAIN =====
+task.spawn(function()
+    task.wait(START_DELAY)   -- chờ game load xong sau khi rejoin
+
+    for _, id in ipairs(ORDER) do
+        if _G.STOP_STAT then return end
+
+        -- chờ UI của chỉ số này xuất hiện
+        local frame, t = nil, os.clock()
+        repeat
+            frame = getFrame(id)
+            if not frame then task.wait(0.5) end
+        until frame or os.clock() - t > 15
+        if not frame then log("Khong thay frame:", id) return end
+
+        local fails = 0
+        while true do
+            if _G.STOP_STAT then return end
+            local cur = readStat(frame)
+            if not cur then log("Khong doc duoc so:", id) return end
+            log(id, cur .. "/" .. MAX_STAT)
+            if cur >= MAX_STAT then break end   -- đủ rồi, sang chỉ số kế
+
+            if bump(id, frame, cur) then
+                fails = 0
+            else
+                fails += 1
+                if fails >= 3 then return end   -- hết điểm / lỗi: dừng hẳn, không nhảy sang chỉ số khác
+            end
+            task.wait(DELAY + math.random() * 0.3)
+        end
+    end
+    log("Xong tat ca")
+end)
