@@ -9,7 +9,7 @@ local MAX_STAT    = 84                                -- sửa thành 86... khi 
 local ORDER       = {"Chackra", "Gen", "Nin", "Tai"}  -- thứ tự nâng
 local START_DELAY = 20                                -- chờ bao nhiêu giây trước khi chạy
 local DELAY       = 0.6                               -- nghỉ giữa các lần nâng
-local DEBUG       = false                             -- true để xem log trong F9
+local DEBUG       = true                          -- true để xem log trong F9
 
 _G.STOP_STAT = false
 
