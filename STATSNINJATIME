@@ -1,0 +1,111 @@
+task.spawn(function()
+    task.wait(10)   -- chờ 10 giây rồi mới chạy
+    if not game:IsLoaded() then game.Loaded:Wait() end
+    local Players = game:GetService("Players")
+    while not Players.LocalPlayer do task.wait() end
+    local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    local MAX_STAT = 84   -- giữ giống MAX_STAT trong script 2
+    local LIST = {
+        {"Chackra",  "CHAKRA"},
+        {"Genjutsu", "GEN"},
+        {"Ninjutsu", "NIN"},
+        {"Taijutsu", "TAI"},
+    }
+
+    -- gắn UI vào chỗ ẩn nếu executor hỗ trợ
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "StatTracker"
+    gui.ResetOnSpawn = false
+    gui.DisplayOrder = 999
+    local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+    if not okParent or not gui.Parent then gui.Parent = pg end
+
+    -- bảng nhỏ góc trên bên phải
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, 190, 0, 130)
+    panel.Position = UDim2.new(1, -200, 0, 10)
+    panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    panel.BackgroundTransparency = 0.2
+    panel.BorderSizePixel = 0
+    panel.Parent = gui
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 26)
+    title.BackgroundTransparency = 1
+    title.Text = "STATS"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.Parent = panel
+
+    local labels = {}
+    for i, item in ipairs(LIST) do
+        local l = Instance.new("TextLabel")
+        l.Size = UDim2.new(1, -16, 0, 24)
+        l.Position = UDim2.new(0, 8, 0, 26 + (i - 1) * 25)
+        l.BackgroundTransparency = 1
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Font = Enum.Font.GothamMedium
+        l.TextSize = 15
+        l.TextColor3 = Color3.fromRGB(255, 255, 255)
+        l.Text = item[2] .. ":  --/" .. MAX_STAT
+        l.Parent = panel
+        labels[i] = l
+    end
+
+    -- banner to giữa màn hình khi full (bấm vào để tắt)
+    local banner = Instance.new("TextButton")
+    banner.Size = UDim2.new(0, 520, 0, 110)
+    banner.Position = UDim2.new(0.5, -260, 0.35, 0)
+    banner.BackgroundColor3 = Color3.fromRGB(20, 140, 60)
+    banner.BackgroundTransparency = 0.1
+    banner.BorderSizePixel = 0
+    banner.Text = "ĐÃ FULL STATS"
+    banner.TextColor3 = Color3.new(1, 1, 1)
+    banner.Font = Enum.Font.GothamBlack
+    banner.TextScaled = true
+    banner.Visible = false
+    banner.AutoButtonColor = false
+    banner.Parent = gui
+    Instance.new("UICorner", banner).CornerRadius = UDim.new(0, 14)
+
+    local dismissed = false
+    banner.MouseButton1Click:Connect(function()
+        dismissed = true
+        banner.Visible = false
+    end)
+
+    local function readStat(name)
+        local i = pg:FindFirstChild("Interface")
+        local a = i and i:FindFirstChild("Attributes")
+        local b = a and a:FindFirstChild("Attributes")
+        local f = b and b:FindFirstChild(name)
+        local nt = f and f:FindFirstChild("NameText")
+        local v = nt and nt:FindFirstChild("Value")
+        if v and v:IsA("TextLabel") then
+            return tonumber(v.Text:match("(%d+)%s*/%s*%d+"))
+        end
+    end
+
+    while task.wait(1) do
+        local full = 0
+        for i, item in ipairs(LIST) do
+            local cur = readStat(item[1])
+            if cur then
+                labels[i].Text = item[2] .. ":  " .. cur .. "/" .. MAX_STAT
+                if cur >= MAX_STAT then
+                    labels[i].TextColor3 = Color3.fromRGB(80, 255, 120)
+                    full += 1
+                else
+                    labels[i].TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+            else
+                labels[i].Text = item[2] .. ":  --/" .. MAX_STAT
+                labels[i].TextColor3 = Color3.fromRGB(160, 160, 160)
+            end
+        end
+        banner.Visible = (full == #LIST) and not dismissed
+    end
+end)
