@@ -5,7 +5,7 @@ task.spawn(function()
     while not Players.LocalPlayer do task.wait() end
     local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
 
-    local MAX_STAT = 84   -- giữ giống MAX_STAT trong script 2
+    local MAX_STAT = 87   -- giữ giống MAX_STAT trong script 2
     local LIST = {
         {"Chackra",  "CHAKRA"},
         {"Genjutsu", "GEN"},
