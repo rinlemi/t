@@ -14,8 +14,8 @@ local DEBUG       = true   -- test xong đổi thành false
 -- {tên frame trên UI, ID gửi server}
 local ORDER = {
     {"Chackra",  "Chackra"},
-    {"Genjutsu", "Ninjutsu"},
-    {"Ninjutsu", "Genjutsu"},
+    {"Ninjutsu", "Ninjutsu"},
+    {"Genjutsu", "Genjutsu"},
     {"Taijutsu", "Taijutsu"},
 }
 
