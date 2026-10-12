@@ -6,7 +6,7 @@ local GS  = game:GetService("GuiService")
 local pg  = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- ===== CẤU HÌNH =====
-local MAX_STAT    = 84     -- sửa thành 86... khi game nâng trần
+local MAX_STAT    = 87     -- sửa thành 86... khi game nâng trần
 local START_DELAY = 0      -- chờ đã làm ở file autoexec
 local DELAY       = 0.6
 local DEBUG       = true   -- test xong đổi thành false
