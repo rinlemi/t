@@ -12,6 +12,28 @@ local GS, RS = game:GetService("GuiService"), game:GetService("RunService")
 local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 local cam = workspace.CurrentCamera
+
+-- ===== TẮT CHAT =====
+local StarterGui = game:GetService("StarterGui")
+local TCS = game:GetService("TextChatService")
+
+local function hideChat()
+  pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false) end)
+  pcall(function()
+    local cfg = TCS:FindFirstChildOfClass("ChatWindowConfiguration")
+    if cfg then cfg.Enabled = false end
+  end)
+end
+
+hideChat()
+task.spawn(function()
+  while true do
+    hideChat()
+    task.wait(2)
+  end
+end)
+-- ===== HẾT TẮT CHAT =====
+
 local PID = game.PlaceId
 local PL = {LOBBY=8075399143, RAIDMENU=72851066485038, RAID=104597597778318, MAIN=9164271501}
 local G = (getgenv and getgenv()) or _G
@@ -43,6 +65,15 @@ end
 local function click(obj)
   if not obj then log("❌ click nil") return false end
   local b = obj:IsA("GuiButton") and obj or obj:FindFirstChildWhichIsA("GuiButton", true) or obj
+  -- thử firesignal trước (không phụ thuộc vị trí, chat/UI chắn cũng bấm được)
+  if firesignal and b:IsA("GuiButton") then
+    local ok = pcall(function()
+      firesignal(b.MouseButton1Click)
+      firesignal(b.Activated)
+    end)
+    if ok then log("🖱 signal", b:GetFullName()) return true end
+  end
+  -- dự phòng: bấm theo toạ độ
   local c, i = b.AbsolutePosition + b.AbsoluteSize/2, GS:GetGuiInset()
   clickXY(math.floor(c.X+i.X), math.floor(c.Y+i.Y))
   log("🖱", b:GetFullName()) return true
@@ -138,7 +169,7 @@ local function lobby()
   local lv = num(lvl.Text) or 0
   log("📊 Level slot:", lv, "|", lvl:GetFullName())
 
-    -- tìm nút SELECT đang hiện thật
+  -- tìm nút SELECT đang hiện thật
   local function findSelect()
     local best, cands = nil, {}
     local iface = pg:FindFirstChild("Interface")
@@ -182,6 +213,7 @@ local function lobby()
   local go = get(pg,{"Interface","MapPicker","GoToPlace"})
   if shown(go) then click(go) else log("ℹ️ Không có GoToPlace (Raids tự TP)") end
 end
+
 -- ========= RAID MENU =========
 local function raidMenu()
   local R = {"RaidGUI","RaidUI"}
@@ -213,7 +245,6 @@ local function raid()
     task.wait(5)
   end
 end
-
 
 -- ========= REBIRTH (MAIN) =========
 local BLOCK = {Ceiling=true, WallE=true, WallN=true, WallS=true, WallW=true}
