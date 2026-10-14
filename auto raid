@@ -1,7 +1,7 @@
 -- ========= CẤU HÌNH =========
 local WAIT_START = 25
 local MAX_STAT, MAX_LEVEL = 87, 200
-local FLOAT_H   = 60
+local FLOAT_H   = 90
 local SIDE_DIST = 100
 
 task.wait(WAIT_START)
