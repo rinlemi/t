@@ -1,4 +1,9 @@
+if game.PlaceId ~= 104597597778318 then return end
 if not game:IsLoaded() then game.Loaded:Wait() end
+local G = (getgenv and getgenv()) or _G
+G.STOP_STAT = false
+_G.STOP_STAT = false
+
 local Players = game:GetService("Players")
 while not Players.LocalPlayer do task.wait() end
 local VIM = game:GetService("VirtualInputManager")
@@ -6,12 +11,11 @@ local GS  = game:GetService("GuiService")
 local pg  = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- ===== CẤU HÌNH =====
-local MAX_STAT    = 87     -- sửa thành 86... khi game nâng trần
-local START_DELAY = 0      -- chờ đã làm ở file autoexec
+local MAX_STAT    = 87
+local START_DELAY = 0
 local DELAY       = 0.6
-local DEBUG       = true   -- test xong đổi thành false
+local DEBUG       = true
 
--- {tên frame trên UI, ID gửi server}
 local ORDER = {
     {"Chackra",  "Chackra"},
     {"Ninjutsu", "Ninjutsu"},
@@ -19,12 +23,12 @@ local ORDER = {
     {"Taijutsu", "Taijutsu"},
 }
 
-_G.STOP_STAT = false
+local function stopped() return G.STOP_STAT == true or _G.STOP_STAT == true end
 local function log(...) if DEBUG then print("[stats]", ...) end end
 
--- chờ remote xuất hiện (map không có thì chỉ đứng chờ, không báo lỗi)
 local Event
 repeat
+    if stopped() then return end
     local ok, r = pcall(function()
         return game:GetService("ReplicatedStorage").Modules.Services.RNet.Bridges.AttributesRemote_Function
     end)
@@ -63,6 +67,7 @@ local function getYes()
 end
 
 local function click(btn)
+    if stopped() then return end
     GS.SelectedObject = btn
     task.wait(0.1)
     VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
@@ -70,7 +75,7 @@ local function click(btn)
     VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
     task.wait(0.2)
     GS.SelectedObject = nil
-    if getYes() then
+    if getYes() and not stopped() then
         local pos = btn.AbsolutePosition + btn.AbsoluteSize / 2
         local y = pos.Y + GS:GetGuiInset().Y
         VIM:SendMouseButtonEvent(pos.X, y, 0, true, game, 0)
@@ -80,6 +85,7 @@ local function click(btn)
 end
 
 local function bump(id, frame, before)
+    if stopped() then return false end
     task.spawn(function()
         pcall(function() Event:InvokeServer({ID = id, Job = "IncreaseLevel"}) end)
     end)
@@ -87,8 +93,8 @@ local function bump(id, frame, before)
     repeat
         yes = getYes()
         if not yes then task.wait(0.1) end
-    until yes or os.clock() - t > 5
-    if not yes then return false end
+    until yes or os.clock() - t > 5 or stopped()
+    if not yes or stopped() then return false end
     task.wait(0.2 + math.random() * 0.2)
     pcall(click, yes)
     t = os.clock()
@@ -96,7 +102,7 @@ local function bump(id, frame, before)
         task.wait(0.15)
         local now = readStat(frame)
         if now and now > before then return true end
-    until os.clock() - t > 3
+    until os.clock() - t > 3 or stopped()
     return false
 end
 
@@ -107,22 +113,22 @@ task.spawn(function()
 
     for _, pair in ipairs(ORDER) do
         local name, id = pair[1], pair[2]
-        if _G.STOP_STAT then return end
+        if stopped() then return end
 
         local frame
         repeat
             frame = getFrame(name)
             if not frame then task.wait(1) end
-        until frame or _G.STOP_STAT
+        until frame or stopped()
         if not frame then return end
 
         local fails = 0
         while true do
-            if _G.STOP_STAT then return end
+            if stopped() then return end
             local cur = readStat(frame)
             if not cur then log("khong doc duoc so:", name) return end
             log(name, cur .. "/" .. MAX_STAT)
-            if cur >= MAX_STAT then break end   -- đủ rồi, sang chỉ số kế
+            if cur >= MAX_STAT then break end
 
             if bump(id, frame, cur) then
                 fails = 0
@@ -130,7 +136,7 @@ task.spawn(function()
                 fails += 1
                 if fails >= 3 then
                     log("dung tai", name, "- nang khong tang")
-                    return   -- hết điểm / lỗi: dừng hẳn, không nâng lung tung
+                    return
                 end
             end
             task.wait(DELAY + math.random() * 0.3)
