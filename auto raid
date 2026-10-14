@@ -1,0 +1,365 @@
+-- ========= CẤU HÌNH =========
+local WAIT_START = 20
+local MAX_STAT, MAX_LEVEL = 87, 200
+local FLOAT_H   = 60
+local SIDE_DIST = 100
+
+task.wait(WAIT_START)
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local P, VIM = game:GetService("Players"), game:GetService("VirtualInputManager")
+local GS, RS = game:GetService("GuiService"), game:GetService("RunService")
+local lp = P.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+local cam = workspace.CurrentCamera
+local PID = game.PlaceId
+local PL = {LOBBY=8075399143, RAIDMENU=72851066485038, RAID=104597597778318, MAIN=9164271501}
+local G = (getgenv and getgenv()) or _G
+local function log(...) print(os.date("%H:%M:%S"), ...) end
+
+-- ========= BẤM N 1 LẦN TRƯỚC KHI CHẠY =========
+local PRESS_N_AT = {
+  [PL.LOBBY]    = true,
+  [PL.RAIDMENU] = true,
+  [PL.RAID]     = false, -- Raid script đã tự bấm N
+  [PL.MAIN]     = true,
+}
+if PRESS_N_AT[PID] then
+  log("⌨️ Bấm N 1 lần")
+  VIM:SendKeyEvent(true, Enum.KeyCode.N, false, game)
+  task.wait(0.1)
+  VIM:SendKeyEvent(false, Enum.KeyCode.N, false, game)
+  task.wait(1)
+end
+
+-- ========= TIỆN ÍCH =========
+local function get(root, path) local o = root for _, n in ipairs(path) do o = o and o:FindFirstChild(n) end return o end
+local function waitFor(path, t) local s = os.clock() while os.clock()-s < (t or 30) do local o = get(pg, path) if o then return o end task.wait(0.5) end end
+local function clickXY(x, y)
+  VIM:SendMouseMoveEvent(x,y,game) task.wait(0.15)
+  VIM:SendMouseButtonEvent(x,y,0,true,game,1) task.wait(0.05)
+  VIM:SendMouseButtonEvent(x,y,0,false,game,1)
+end
+local function click(obj)
+  if not obj then log("❌ click nil") return false end
+  local b = obj:IsA("GuiButton") and obj or obj:FindFirstChildWhichIsA("GuiButton", true) or obj
+  local c, i = b.AbsolutePosition + b.AbsoluteSize/2, GS:GetGuiInset()
+  clickXY(math.floor(c.X+i.X), math.floor(c.Y+i.Y))
+  log("🖱", b:GetFullName()) return true
+end
+local function key(k, t) VIM:SendKeyEvent(true,k,false,game) task.wait(t or 0.1) VIM:SendKeyEvent(false,k,false,game) end
+local function num(s) return s and tonumber(tostring(s):match("%d+")) end
+local function hrpGet() local c = lp.Character or lp.CharacterAdded:Wait() return c:WaitForChild("HumanoidRootPart") end
+local function level() local l = get(pg,{"Interface","TopLeftInfo","Level"}) return l and num(l.Text) end
+
+local NAMES = {"Chackra","Genjutsu","Ninjutsu","Taijutsu"}
+local function stat(n)
+  local v = get(pg,{"Interface","Attributes","Attributes",n,"NameText","Value"})
+  return v and tonumber(v.Text:match("(%d+)%s*/%s*%d+"))
+end
+local function ready()
+  local lv = level()
+  local ok = lv and lv >= MAX_LEVEL
+  local s = {}
+  for _, n in ipairs(NAMES) do
+    local c = stat(n) s[#s+1] = n.."="..tostring(c)
+    if not c or c < MAX_STAT then ok = false end
+  end
+  log(("[CHECK] lv=%s | %s | ready=%s"):format(tostring(lv), table.concat(s," "), tostring(ok)))
+  return ok
+end
+
+-- ========= DỪNG RAID + STATS =========
+local function stopAll()
+  G.STOP_STAT = true  G.STOP_RAID = true
+  _G.STOP_STAT = true _G.STOP_RAID = true
+  pcall(function() if G.RAID_KILL then G.RAID_KILL() end end)
+  task.wait(1.5)
+  GS.SelectedObject = nil
+  for _, k in ipairs({Enum.KeyCode.R, Enum.KeyCode.G, Enum.KeyCode.Return}) do
+    VIM:SendKeyEvent(false, k, false, game)
+  end
+  cam.CameraType = Enum.CameraType.Custom
+  log("🛑 Đã dừng Raid + Stats")
+end
+
+local function exitToLobby()
+  stopAll()
+  for try = 1, 4 do
+    key(Enum.KeyCode.M) task.wait(0.7)
+    for _, p in ipairs({
+      {"Interface","MenuBar","Display","ExtraMenu"},
+      {"Interface","ExtraMenu","Main Menu"},
+      {"Interface","ExtraMenu","Main Menu","ExitOptions","ReturnMainMenu"},
+    }) do
+      local o = get(pg, p)
+      if not o then warn("❌ Không thấy", table.concat(p,".")) break end
+      click(o) task.wait(0.7)
+    end
+    log("🏠 Đang về lobby (lần", try, ")")
+    task.wait(15)
+  end
+end
+
+-- ========= LOBBY =========
+local function lobby()
+  task.wait(3)
+  local LV_PATHS = {
+    {"Interface","SaveSelectionFrame","LibrayFrame","LevelLabel"},
+    {"Interface","CharacterCreatorFrame","Characters","LibrayFrame","LevelLabel"},
+  }
+  local function shown(o)
+    if not o or o.AbsoluteSize.X < 5 then return false end
+    local p = o
+    while p and p ~= pg do
+      if p:IsA("GuiObject") and not p.Visible then return false end
+      if p:IsA("ScreenGui") and not p.Enabled then return false end
+      p = p.Parent
+    end
+    return true
+  end
+  local function findLevel()
+    for _, path in ipairs(LV_PATHS) do
+      local l = get(pg, path)
+      if shown(l) then return l, path end
+    end
+  end
+
+  local vs = cam.ViewportSize
+  for _ = 1, 8 do
+    if findLevel() then break end
+    clickXY(math.floor(vs.X/2), math.floor(vs.Y/2)) task.wait(1.5)
+  end
+  local t = os.clock()
+  local lvl, path
+  repeat lvl, path = findLevel() task.wait(0.5) until lvl or os.clock() - t > 20
+  if not lvl then return warn("❌ Không thấy LevelLabel hiện") end
+  task.wait(0.5)
+  local lv = num(lvl.Text) or 0
+  log("📊 Level slot:", lv, "|", lvl:GetFullName())
+
+    -- tìm nút SELECT đang hiện thật
+  local function findSelect()
+    local best, cands = nil, {}
+    local iface = pg:FindFirstChild("Interface")
+    if not iface then return end
+    for _, d in ipairs(iface:GetDescendants()) do
+      if d:IsA("GuiObject") and shown(d) then
+        local isSel = d.Name == "Select"
+          or (d:IsA("TextLabel") and d.Text:upper():gsub("%s","") == "SELECT")
+        if isSel then
+          local btn = d:IsA("GuiButton") and d or d:FindFirstChildWhichIsA("GuiButton", true) or d
+          cands[#cands+1] = btn
+          if not best or btn:GetFullName():find("SaveSelectionFrame") then best = btn end
+        end
+      end
+    end
+    for _, c in ipairs(cands) do log("🔎 Select ứng viên:", c:GetFullName()) end
+    return best
+  end
+
+  local B = {"Interface","MainScreenFrame","Buttons"}
+  local passed = false
+  for try = 1, 5 do
+    local sel = findSelect()
+    if sel then click(sel) else log("⚠️ Chưa thấy nút Select hiện") end
+    task.wait(2)
+    if shown(get(pg, {B[1],B[2],B[3],"MainLabel"})) then passed = true break end
+    log("⚠️ Chưa qua màn chọn nhân vật, thử lại", try)
+  end
+  if not passed then return warn("❌ Bấm Select không ăn, gửi mình các dòng 🔎") end
+
+  local main = get(pg, {B[1],B[2],B[3],"MainLabel"})
+  if lv >= MAX_LEVEL then
+    log("➡️ Lv200 → PLAY (rebirth)")
+  else
+    log("➡️ Lv<200 → RAIDS")
+    click(waitFor({B[1],B[2],B[3],"Back"}, 15)) task.wait(1.2)
+  end
+  click(main)
+  local t2 = os.clock()
+  repeat task.wait(0.5) until shown(get(pg,{"Interface","MapPicker","GoToPlace"})) or os.clock() - t2 > 8
+  local go = get(pg,{"Interface","MapPicker","GoToPlace"})
+  if shown(go) then click(go) else log("ℹ️ Không có GoToPlace (Raids tự TP)") end
+end
+-- ========= RAID MENU =========
+local function raidMenu()
+  local R = {"RaidGUI","RaidUI"}
+  local function p(...) return {R[1],R[2],...} end
+  if not waitFor(R, 30) then return warn("❌ Không thấy RaidGUI.RaidUI") end
+  task.wait(2)
+  for try = 1, 3 do
+    click(get(pg, p("Buttons","Server List Buttons","Create Party"))) task.wait(1)
+    click(get(pg, p("Create Party","DifficultySelect","Difficulties","ImageButton"))) task.wait(0.7)
+    local mp  = get(pg, p("Create Party","PlayerSettings","Settings","MaxPlayers","TextBox"))
+    local dec = get(pg, p("Create Party","PlayerSettings","Settings","Decrease"))
+    for _ = 1, 8 do
+      if mp and num(mp.Text) == 1 then break end
+      click(dec) task.wait(0.4)
+    end
+    log("👥 MaxPlayers =", mp and mp.Text)
+    click(get(pg, p("Buttons","Create Party Buttons","Confirm"))) task.wait(1)
+    click(get(pg, p("Buttons","My Party Buttons","Start")))
+    log("🚀 Start (lần", try, ")")
+    task.wait(15)
+  end
+end
+
+-- ========= RAID =========
+local function raid()
+  task.wait(30)
+  while true do
+    if ready() then exitToLobby() break end
+    task.wait(5)
+  end
+end
+
+-- ========= REBIRTH (MAIN) =========
+local BLOCK = {Ceiling=true, WallE=true, WallN=true, WallS=true, WallW=true}
+local function removeBlockers()
+  for _, w in ipairs(workspace:GetChildren()) do
+    if w.Name:find("InnerWorld") then
+      for _, c in ipairs(w:GetChildren()) do if BLOCK[c.Name] then c:Destroy() end end
+    end
+  end
+end
+local function findBoss()
+  local e = workspace:FindFirstChild("Entities")
+  if e then for _, c in ipairs(e:GetChildren()) do if c.Name:find("Reflection") then return c end end end
+end
+
+local scroll = {"Interface","DialogueNPC","Options","Scroll"}
+local function dlgOpen()
+  local sc = get(pg, scroll)
+  if not sc then return false end
+  for _, o in ipairs(sc:GetChildren()) do
+    local l = o:FindFirstChild("Label")
+    if l and l:IsA("TextLabel") and l.Visible and l.AbsoluteSize.X > 5 then
+      local d = get(pg,{"Interface","DialogueNPC"})
+      if d and d:IsA("GuiObject") and not d.Visible then return false end
+      return true
+    end
+  end
+  return false
+end
+
+local function doRebirthDialogue()
+  local hrp = hrpGet()
+  local AREA = Vector3.new(1106.00, 175.98, -2274.17)
+  hrp.CFrame = CFrame.new(AREA)
+  local god
+  for i = 1, 40 do
+    local n = workspace:FindFirstChild("NPCs")
+    god = n and n:FindFirstChild("God")
+    if god then break end
+    if i % 10 == 0 then hrp.CFrame = CFrame.new(AREA + Vector3.new(0,3,0)) end
+    task.wait(0.5)
+  end
+  if not god then warn("❌ Không thấy God") return false end
+  local head = god:FindFirstChild("Head") or god:FindFirstChildWhichIsA("BasePart")
+  hrp.CFrame = CFrame.lookAt(head.Position + head.CFrame.LookVector*5, head.Position)
+  task.wait(1)
+  for i = 1, 6 do
+    if dlgOpen() then break end
+    log("⌨️ Giữ E lần", i)
+    for _, d in ipairs(god:GetDescendants()) do
+      if d:IsA("ProximityPrompt") and fireproximityprompt then pcall(fireproximityprompt, d) end
+    end
+    key(Enum.KeyCode.E, 1.6) task.wait(1.2)
+  end
+  local seq = {"rebirth","no different","wager it all","ninjutsu"}
+  local si, t0 = 1, os.clock()
+  while os.clock() - t0 < 40 do
+    local m = get(pg,{"Interface","Modal"})
+    local y = m and m:FindFirstChild("Yes")
+    if y and y.Visible and y.AbsoluteSize.X > 5 then
+      if m.Title and m.Title.Text:upper():find("REBIRTH") then
+        task.wait(0.5) click(y) log("✅ Đã bấm Yes") return true
+      end
+      warn("Modal lạ") return false
+    end
+    local sc = dlgOpen() and get(pg, scroll)
+    if sc then
+      local kw = seq[si]
+      for _, o in ipairs(sc:GetChildren()) do
+        local l = o:FindFirstChild("Label")
+        if l and l:IsA("TextLabel") and kw and l.Text:lower():find(kw, 1, true) then
+          log("➡️", o.Name, l.Text) click(o) si += 1 task.wait(0.8) break
+        end
+      end
+    end
+    task.wait(0.5)
+  end
+  return false
+end
+
+local function fightBoss(boss)
+  removeBlockers()
+  local bh = boss:WaitForChild("HumanoidRootPart", 10)
+  local hum = boss:FindFirstChildOfClass("Humanoid")
+  if not bh then return warn("❌ Boss không có HRP") end
+  log("⚔️ Float +"..FLOAT_H, "| HP:", hum and hum.Health)
+  local f = RS.Heartbeat:Connect(function()
+    local h = boss.Parent and boss:FindFirstChild("HumanoidRootPart")
+    local me = hrpGet()
+    if h and me then
+      me.CFrame = CFrame.new(h.Position + Vector3.new(0, FLOAT_H, 0))
+      me.Velocity = Vector3.zero me.RotVelocity = Vector3.zero
+    end
+    removeBlockers()
+  end)
+  task.wait(0.3)
+  cam.CameraType = Enum.CameraType.Scriptable
+  local a = RS.RenderStepped:Connect(function()
+    if not boss.Parent then return end
+    local cf = boss:GetBoundingBox()
+    local bp = cf.Position
+    local mid = bp + Vector3.new(0, FLOAT_H/2, 0)
+    cam.CFrame = CFrame.lookAt(mid + Vector3.new(SIDE_DIST, 0, 0), mid)
+    local sp, on = cam:WorldToViewportPoint(bp)
+    if on then VIM:SendMouseMoveEvent(math.floor(sp.X), math.floor(sp.Y), game) end
+  end)
+  task.wait(0.5) key(Enum.KeyCode.G, 0.5) task.wait(2)
+  local r = RS.Heartbeat:Connect(function() VIM:SendKeyEvent(true, Enum.KeyCode.R, false, game) end)
+  local t1 = os.clock()
+  while boss.Parent and not (hum and hum.Health <= 0) and os.clock() - t1 < 240 do task.wait(0.5) end
+  log("💀 Boss xong sau", math.floor(os.clock()-t1), "s")
+  task.wait(0.5)
+  r:Disconnect() a:Disconnect() f:Disconnect()
+  VIM:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+  cam.CameraType = Enum.CameraType.Custom
+end
+
+local function main()
+  stopAll()
+  waitFor({"Interface","TopLeftInfo","Level"}, 30)
+  task.wait(3)
+  local lv = level() or 0
+  log("🌏 MAIN | level", lv)
+  local boss = findBoss()
+  if not boss and lv >= MAX_LEVEL then
+    if not doRebirthDialogue() then return warn("❌ Rebirth thất bại, dừng") end
+    for i = 1, 60 do
+      boss = findBoss()
+      if boss then log("👹 Boss sau", i, "s") break end
+      task.wait(1)
+    end
+    task.wait(1)
+  end
+  if boss then
+    fightBoss(boss)
+    log("Level sau rebirth:", level(), "| chờ 10s")
+    task.wait(10)
+  else
+    log("ℹ️ Không cần rebirth (lv", lv, ") → về lobby")
+  end
+  exitToLobby()
+end
+
+-- ========= ĐIỀU PHỐI =========
+log("📍 PlaceId", PID)
+if     PID == PL.LOBBY    then lobby()
+elseif PID == PL.RAIDMENU then raidMenu()
+elseif PID == PL.RAID     then raid()
+elseif PID == PL.MAIN     then main()
+else warn("Place khác:", PID) end
