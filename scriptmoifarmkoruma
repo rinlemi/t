@@ -1,4 +1,4 @@
--- RAID AUTO v22 (có cờ dừng, chỉ chạy ở Place Raid)
+-- RAID AUTO v22 (có cờ dừng, chỉ chạy ở Place Raid) + AUTO REJOIN
 if game.PlaceId ~= 104597597778318 then return end
 local G = (getgenv and getgenv()) or _G
 G.STOP_RAID = false
@@ -8,10 +8,40 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local GuiService          = game:GetService("GuiService")
 local RunService          = game:GetService("RunService")
 local Workspace           = game:GetService("Workspace")
+local TeleportService     = game:GetService("TeleportService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera    = Workspace.CurrentCamera
+
+-- ===================== AUTO REJOIN =====================
+local LOBBY = 8075399143   -- luôn vào lại Lobby để hub chạy từ đầu
+local rejoining = false
+
+local function rejoin(reason)
+    if rejoining then return end
+    rejoining = true
+    warn("[REJOIN] Bị kick/mất kết nối:", reason)
+    task.wait(3)
+    while true do
+        pcall(function() TeleportService:Teleport(LOBBY, player) end)
+        task.wait(10)  -- teleport thất bại thì thử lại sau 10s
+    end
+end
+
+-- Cách 1: Roblox báo lỗi qua GuiService
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and msg ~= "" then rejoin(msg) end
+end)
+
+-- Cách 2: bắt bảng ErrorPrompt trong CoreGui (dự phòng)
+pcall(function()
+    local overlay = game:GetService("CoreGui").RobloxPromptGui.promptOverlay
+    overlay.ChildAdded:Connect(function(c)
+        if c.Name == "ErrorPrompt" then rejoin("ErrorPrompt") end
+    end)
+end)
+-- ===================== HẾT AUTO REJOIN =====================
 
 local floatConn, aimConn, rConn
 
