@@ -11,7 +11,7 @@ local GS  = game:GetService("GuiService")
 local pg  = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- ===== CẤU HÌNH =====
-local MAX_STAT    = 87
+local MAX_STAT    = 90
 local START_DELAY = 0
 local DELAY       = 0.6
 local DEBUG       = true
