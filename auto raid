@@ -3,6 +3,7 @@ local WAIT_START = 20
 local MAX_STAT, MAX_LEVEL = 90, 200
 local FLOAT_H   = 90
 local SIDE_DIST = 100
+local FLAG = "need_raid.txt"
 
 task.wait(WAIT_START)
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -38,6 +39,19 @@ local PID = game.PlaceId
 local PL = {LOBBY=8075399143, RAIDMENU=72851066485038, RAID=104597597778318, MAIN=9164271501}
 local G = (getgenv and getgenv()) or _G
 local function log(...) print(os.date("%H:%M:%S"), ...) end
+
+-- ===== CỜ "CẦN LUYỆN STAT" =====
+local function setFlag()
+  pcall(function() if writefile then writefile(FLAG, "1") end end)
+end
+local function clearFlag()
+  pcall(function() if isfile and delfile and isfile(FLAG) then delfile(FLAG) end end)
+end
+local function hasFlag()
+  local r = false
+  pcall(function() r = (isfile and isfile(FLAG)) and true or false end)
+  return r
+end
 
 -- ========= BẤM N 1 LẦN TRƯỚC KHI CHẠY =========
 local PRESS_N_AT = {
@@ -98,6 +112,15 @@ local function ready()
   end
   log(("[CHECK] lv=%s | %s | ready=%s"):format(tostring(lv), table.concat(s," "), tostring(ok)))
   return ok
+end
+
+-- true nếu CHẮC CHẮN thiếu stat (đọc được mà < MAX_STAT)
+local function statsDefinitelyLow()
+  for _, n in ipairs(NAMES) do
+    local c = stat(n)
+    if c and c < MAX_STAT then return true, n, c end
+  end
+  return false
 end
 
 -- ========= DỪNG RAID + STATS =========
@@ -201,10 +224,11 @@ local function lobby()
   if not passed then return warn("❌ Bấm Select không ăn, gửi mình các dòng 🔎") end
 
   local main = get(pg, {B[1],B[2],B[3],"MainLabel"})
-  if lv >= MAX_LEVEL then
-    log("➡️ Lv200 → PLAY (rebirth)")
+  local needRaid = hasFlag()
+  if lv >= MAX_LEVEL and not needRaid then
+    log("➡️ Lv200 + stat đủ → PLAY (rebirth)")
   else
-    log("➡️ Lv<200 → RAIDS")
+    log("➡️ Cần luyện stat (lv", lv, "| cờ =", tostring(needRaid), ") → RAIDS")
     click(waitFor({B[1],B[2],B[3],"Back"}, 15)) task.wait(1.2)
   end
   click(main)
@@ -239,9 +263,13 @@ end
 
 -- ========= RAID =========
 local function raid()
+  setFlag() -- vào Raid = chưa đủ stat, kể cả bị kick giữa chừng cờ vẫn còn
   task.wait(30)
   while true do
-    if ready() then exitToLobby() break end
+    if ready() then
+      clearFlag() -- chỉ xoá cờ khi stat thật sự đủ
+      exitToLobby() break
+    end
     task.wait(5)
   end
 end
@@ -374,6 +402,18 @@ local function main()
   local lv = level() or 0
   log("🌏 MAIN | level", lv)
   local boss = findBoss()
+
+  -- CHẶN rebirth nếu stat chưa đủ (lớp bảo vệ thứ 2, phòng khi không có cờ)
+  if not boss and lv >= MAX_LEVEL then
+    local low, n, c = statsDefinitelyLow()
+    if low then
+      log("⛔ Stat chưa đủ, KHÔNG rebirth:", n, "=", c, "/", MAX_STAT)
+      setFlag()
+      exitToLobby()
+      return
+    end
+  end
+
   if not boss and lv >= MAX_LEVEL then
     if not doRebirthDialogue() then return warn("❌ Rebirth thất bại, dừng") end
     for i = 1, 60 do
