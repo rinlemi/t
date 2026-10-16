@@ -1,6 +1,6 @@
 -- ========= CẤU HÌNH =========
 local WAIT_START = 20
-local MAX_STAT, MAX_LEVEL = 87, 200
+local MAX_STAT, MAX_LEVEL = 90, 200
 local FLOAT_H   = 90
 local SIDE_DIST = 100
 
