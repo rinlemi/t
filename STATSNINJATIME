@@ -5,8 +5,9 @@ task.spawn(function()
     while not Players.LocalPlayer do task.wait() end
     local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
 
-    local MAX_STAT = 90   -- giữ giống MAX_STAT trong script 2
+    local MAX_STAT = 165   -- giữ giống MAX_STAT trong script 2
     local LIST = {
+        {"DEF",      "DEF"},       -- thêm DEF lên đầu
         {"Chackra",  "CHAKRA"},
         {"Genjutsu", "GEN"},
         {"Ninjutsu", "NIN"},
@@ -21,9 +22,9 @@ task.spawn(function()
     local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
     if not okParent or not gui.Parent then gui.Parent = pg end
 
-    -- bảng nhỏ góc trên bên phải
+    -- bảng nhỏ góc trên bên phải (cao hơn vì thêm 1 dòng)
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 190, 0, 130)
+    panel.Size = UDim2.new(0, 190, 0, 160)   -- 130 -> 160 cho đủ 5 dòng
     panel.Position = UDim2.new(1, -200, 0, 10)
     panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     panel.BackgroundTransparency = 0.2
@@ -77,15 +78,33 @@ task.spawn(function()
         banner.Visible = false
     end)
 
+    -- Đọc stat: hỗ trợ cả dạng chuẩn (NameText > Value)
+    -- và dạng DEF ("Max HP" > Value) như đường dẫn bạn gửi
     local function readStat(name)
         local i = pg:FindFirstChild("Interface")
         local a = i and i:FindFirstChild("Attributes")
         local b = a and a:FindFirstChild("Attributes")
         local f = b and b:FindFirstChild(name)
-        local nt = f and f:FindFirstChild("NameText")
-        local v = nt and nt:FindFirstChild("Value")
+        if not f then return nil end
+
+        -- dạng chuẩn
+        local nt = f:FindFirstChild("NameText")
+        local v  = nt and nt:FindFirstChild("Value")
         if v and v:IsA("TextLabel") then
-            return tonumber(v.Text:match("(%d+)%s*/%s*%d+"))
+            local n = tonumber(v.Text:match("(%d+)%s*/%s*%d+"))
+            if n then return n end
+        end
+
+        -- dạng DEF: f["Max HP"].Value
+        local mh = f:FindFirstChild("Max HP")
+        local mv = mh and mh:FindFirstChild("Value")
+        if mv then
+            if mv:IsA("TextLabel") then
+                return tonumber(mv.Text:match("(%d+)"))
+            else
+                local ok, num = pcall(function() return tonumber(mv.Value) end)
+                if ok and num then return num end
+            end
         end
     end
 
