@@ -4,6 +4,7 @@
 --  - v6.4/6.6: phanh mượt
 --  - v6.8: đua xong + Close → check ngồi NHANH:
 --          đang ngồi → TP thẳng, không ngồi → spawn xe mới
+--  - v6.9: random tốc độ mỗi vòng (130-190, bước 10, lệch >= 20)
 -- ============================================================
 
 local Players    = game:GetService("Players")
@@ -17,6 +18,14 @@ local pg         = lp:WaitForChild("PlayerGui")
 local FILE       = "race_path.lua"
 local SPEED      = 210
 local SPEED_MAX  = 2000
+
+-- === RANDOM TỐC ĐỘ MỖI VÒNG ===
+local SPEED_RANDOM   = true   -- false = dùng SPEED cố định như cũ
+local RAND_MIN       = 130
+local RAND_MAX       = 190
+local RAND_STEP      = 10     -- các mức: 130,140,...,190
+local RAND_MIN_DIFF  = 20     -- vòng sau phải lệch vòng trước ít nhất 20
+
 local YAW        = 0
 local LOOKAHEAD  = 10
 local JITTER_MIN, JITTER_MAX = -6, 4
@@ -170,6 +179,20 @@ end
 
 local function rnd(a, b) return a + math.random() * (b - a) end
 
+-- === RANDOM TỐC ĐỘ MỖI VÒNG (hàm chọn) ===
+local lastLapSpeed
+local function pickLapSpeed()
+    local c = {}
+    for v = RAND_MIN, RAND_MAX, RAND_STEP do
+        if not lastLapSpeed or math.abs(v - lastLapSpeed) >= RAND_MIN_DIFF then
+            c[#c + 1] = v
+        end
+    end
+    if #c == 0 then return RAND_MIN end
+    lastLapSpeed = c[math.random(#c)]
+    return lastLapSpeed
+end
+
 local function smoothStop(lv, root, duration)
     if not (lv and lv.Parent and root and root.Parent) then
         if lv and lv.Parent then lv.VectorVelocity = Vector3.zero end
@@ -236,7 +259,7 @@ local function button(y, text, color)
     return b
 end
 
-label(4, "TU DONG DUA RAID v6.8").Font = Enum.Font.GothamBold
+label(4, "TU DONG DUA RAID v6.9").Font = Enum.Font.GothamBold
 local lbStatus = label(28, "")
 local lbProg   = label(48, "Tien do: 0%")
 local lbTime   = label(68, "Thoi gian: 0.0s")
@@ -263,7 +286,11 @@ local btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
 
 local function status(t) lbStatus.Text = t end
 local function refresh()
-    lbSpeed.Text = "Toc do cai: " .. SPEED
+    if SPEED_RANDOM then
+        lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX)
+    else
+        lbSpeed.Text = "Toc do cai: " .. SPEED
+    end
     lbYaw.Text   = "Xoay xe: " .. YAW .. " do"
     tbSpeed.Text = tostring(SPEED)
 end
@@ -835,6 +862,12 @@ local function mainLoop()
         end
         if not running then break end
 
+        -- === v6.9: random tốc độ mỗi vòng (trước runLap) ===
+        if SPEED_RANDOM then
+            SPEED = pickLapSpeed()
+            refresh()
+            print("   🎲 Tốc độ vòng này:", SPEED)
+        end
         status("Dang dua...")
         local ok, why = runLap(car, seat)
         if why == "far_from_path" then
@@ -898,4 +931,4 @@ end)
 
 btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
 
-print("✅ Race Playback v6.8 loaded | Path:", #pts, "điểm |", math.floor(TOTAL), "stud")
+print("✅ Race Playback v6.9 loaded | Path:", #pts, "điểm |", math.floor(TOTAL), "stud")
