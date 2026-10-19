@@ -15,7 +15,7 @@ local pg         = lp:WaitForChild("PlayerGui")
 
 -- ===== CẤU HÌNH =====
 local FILE       = "race_path.lua"
-local SPEED      = 240
+local SPEED      = 210
 local SPEED_MAX  = 2000
 local YAW        = 0
 local LOOKAHEAD  = 10
