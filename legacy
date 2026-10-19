@@ -1,0 +1,901 @@
+-- ============================================================
+--  RACE PLAYBACK v6.8 - Tuanh Script
+--  - v6.3: bỏ PivotTo, raid bằng UI Teleport + lái
+--  - v6.4/6.6: phanh mượt
+--  - v6.8: đua xong + Close → check ngồi NHANH:
+--          đang ngồi → TP thẳng, không ngồi → spawn xe mới
+-- ============================================================
+
+local Players    = game:GetService("Players")
+local RS         = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local VIM        = game:GetService("VirtualInputManager")
+local lp         = Players.LocalPlayer
+local pg         = lp:WaitForChild("PlayerGui")
+
+-- ===== CẤU HÌNH =====
+local FILE       = "race_path.lua"
+local SPEED      = 240
+local SPEED_MAX  = 2000
+local YAW        = 0
+local LOOKAHEAD  = 10
+local JITTER_MIN, JITTER_MAX = -6, 4
+local YAW_NOISE  = 2
+local ACCEL_TAU  = 1.8
+local RAID_POS   = Vector3.new(13310.759765625, 75.13611602783203, -3627.98876953125)
+local VEHICLE_NAME = ""
+local WAIT_AFTER_SOLO  = 6
+local WAIT_AFTER_SPAWN = 2
+
+local MAX_FORCE = 5e4
+
+local RAID_TELEPORT_NAME = "GP_Track_Race"
+local WAIT_AFTER_TELEPORT = 7
+local RAID_DRIVE_SPEED    = 120
+local RAID_ARRIVE_DIST    = 15
+local RAID_DRIVE_TIMEOUT  = 90
+
+-- === v6.8: tốc độ sau khi đua xong ===
+local CLOSE_DELAY_MIN, CLOSE_DELAY_MAX = 0.2, 0.4  -- nghỉ trước khi bấm Close
+local AFTER_CLOSE_WAIT = 0.3                       -- nghỉ sau Close rồi check ngồi
+
+local CAR_FORWARD_SIGN = 1
+local Y_FORCE_FULL     = false
+local AO_RESPONSIVE    = 300
+local LOOK_LERP_RATE   = 30
+local WARMUP_TIME      = 1.0
+local PROJECT_WINDOW   = 40
+local MAX_PATH_DIST    = 80
+
+local STOP_TIME_FINISH = 1.5
+local STOP_TIME_RAID   = 0.8
+local STOP_TIME_STOP   = 1.0
+
+local RELEASE_MIN_DIST   = 30
+local RELEASE_TIME_AHEAD = 0.15
+local FINISH_OVERSHOOT   = 80
+local FINISH_DUR_MIN     = 1.0
+local FINISH_DUR_MAX     = 3.0
+
+-- ===== ĐỌC ĐƯỜNG =====
+local PATH
+pcall(function() PATH = loadstring(readfile(FILE) .. "\nreturn PATH")() end)
+local pts, cum = {}, {0}
+if type(PATH) == "table" and #PATH > 1 then
+    for i, p in ipairs(PATH) do pts[i] = Vector3.new(p[1], p[2], p[3]) end
+    for i = 2, #pts do cum[i] = cum[i-1] + (pts[i] - pts[i-1]).Magnitude end
+end
+local TOTAL = cum[#pts] or 0
+
+local function at(d)
+    d = math.clamp(d, 0, TOTAL)
+    local lo, hi = 1, #pts
+    while hi - lo > 1 do
+        local mid = (lo + hi) // 2
+        if cum[mid] <= d then lo = mid else hi = mid end
+    end
+    local seg = cum[hi] - cum[lo]
+    local a = seg > 0 and (d - cum[lo]) / seg or 0
+    return pts[lo]:Lerp(pts[hi], a)
+end
+
+local function projectD(realPos, dHint)
+    local rx, rz = realPos.X, realPos.Z
+    local lo = math.max(0, dHint - PROJECT_WINDOW)
+    local hi = math.min(TOTAL, dHint + PROJECT_WINDOW)
+    if hi <= lo then return dHint, math.huge end
+    local step = (hi - lo) / 40
+    local bestD, bestSq = dHint, math.huge
+    local dd = lo
+    while dd <= hi do
+        local p = at(dd)
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestD = dd end
+        dd = dd + step
+    end
+    local rlo = math.max(lo, bestD - step)
+    local rhi = math.min(hi, bestD + step)
+    local fine = step / 8
+    dd = rlo
+    while dd <= rhi do
+        local p = at(dd)
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestD = dd end
+        dd = dd + fine
+    end
+    return bestD, math.sqrt(bestSq)
+end
+
+local function nearestD(realPos)
+    local rx, rz = realPos.X, realPos.Z
+    local bestI, bestSq = 1, math.huge
+    for i, p in ipairs(pts) do
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestI = i end
+    end
+    return projectD(realPos, cum[bestI])
+end
+
+-- ===== TIỆN ÍCH UI =====
+local function P(root, ...)
+    for _, n in ipairs({...}) do
+        if not root then return nil end
+        root = root:FindFirstChild(n)
+    end
+    return root
+end
+
+local function shown(g)
+    local o = g
+    while o and o ~= pg do
+        if o:IsA("GuiObject") and not o.Visible then return false end
+        if o:IsA("ScreenGui") and not o.Enabled then return false end
+        o = o.Parent
+    end
+    return true
+end
+
+local function click(obj)
+    if not obj then return false end
+    local btn = obj:IsA("GuiButton") and obj or obj:FindFirstChildWhichIsA("GuiButton", true)
+    if btn then
+        for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+            if getconnections then
+                for _, c in ipairs(getconnections(btn[ev])) do
+                    pcall(function() c:Fire() end)
+                end
+            end
+        end
+        if firesignal then
+            for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+                pcall(function() firesignal(btn[ev]) end)
+            end
+        end
+        pcall(function() btn:Activate() end)
+    end
+    local t = btn or obj
+    if t and t.AbsoluteSize and t.AbsoluteSize.X > 0 then
+        local pos = t.AbsolutePosition + t.AbsoluteSize / 2 + GuiService:GetGuiInset()
+        VIM:SendMouseMoveEvent(pos.X, pos.Y, game)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+    end
+    return true
+end
+
+local function rnd(a, b) return a + math.random() * (b - a) end
+
+local function smoothStop(lv, root, duration)
+    if not (lv and lv.Parent and root and root.Parent) then
+        if lv and lv.Parent then lv.VectorVelocity = Vector3.zero end
+        return
+    end
+    local v0  = lv.VectorVelocity
+    local mag = v0.Magnitude
+    if mag < 5 then
+        lv.VectorVelocity = Vector3.zero
+        return
+    end
+    duration = duration or STOP_TIME_FINISH
+    local dir = v0.Unit
+    local t0  = os.clock()
+    while os.clock() - t0 < duration do
+        if not lv.Parent or not root.Parent then return end
+        local a = 1 - (os.clock() - t0) / duration
+        a = math.clamp(a, 0, 1) * math.clamp(a, 0, 1)
+        lv.VectorVelocity = dir * (mag * a)
+        RS.Heartbeat:Wait()
+    end
+    if lv.Parent then lv.VectorVelocity = Vector3.zero end
+end
+
+-- ===== UI PANEL =====
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "RacePlayback", false, 999
+if not pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) or not gui.Parent then
+    gui.Parent = pg
+end
+
+local panel = Instance.new("Frame", gui)
+panel.Size = UDim2.new(0, 240, 0, 304)
+panel.Position = UDim2.new(1, -250, 0.3, 0)
+panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+panel.BackgroundTransparency = 0.15
+panel.BorderSizePixel = 0
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+local function label(y, text)
+    local l = Instance.new("TextLabel", panel)
+    l.Size = UDim2.new(1, -16, 0, 20)
+    l.Position = UDim2.new(0, 8, 0, y)
+    l.BackgroundTransparency = 1
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Font = Enum.Font.GothamMedium
+    l.TextSize = 13
+    l.TextColor3 = Color3.new(1, 1, 1)
+    l.Text = text
+    return l
+end
+
+local function button(y, text, color)
+    local b = Instance.new("TextButton", panel)
+    b.Size = UDim2.new(1, -16, 0, 32)
+    b.Position = UDim2.new(0, 8, 0, y)
+    b.BackgroundColor3 = color
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Text = text
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+
+label(4, "TU DONG DUA RAID v6.8").Font = Enum.Font.GothamBold
+local lbStatus = label(28, "")
+local lbProg   = label(48, "Tien do: 0%")
+local lbTime   = label(68, "Thoi gian: 0.0s")
+local lbSpeed  = label(88, "")
+local lbYaw    = label(108, "")
+local lbCycle  = label(128, "So vong da xong: 0")
+
+local tbSpeed = Instance.new("TextBox", panel)
+tbSpeed.Size = UDim2.new(1, -16, 0, 32)
+tbSpeed.Position = UDim2.new(0, 8, 0, 154)
+tbSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+tbSpeed.BorderSizePixel = 0
+tbSpeed.Font = Enum.Font.GothamBold
+tbSpeed.TextSize = 13
+tbSpeed.TextColor3 = Color3.new(1, 1, 1)
+tbSpeed.PlaceholderText = "Nhap toc do roi Enter"
+tbSpeed.ClearTextOnFocus = false
+tbSpeed.Text = tostring(SPEED)
+Instance.new("UICorner", tbSpeed).CornerRadius = UDim.new(0, 6)
+
+local btnStart = button(192, "START", Color3.fromRGB(40, 150, 70))
+local btnStop  = button(230, "STOP", Color3.fromRGB(170, 60, 60))
+local btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
+
+local function status(t) lbStatus.Text = t end
+local function refresh()
+    lbSpeed.Text = "Toc do cai: " .. SPEED
+    lbYaw.Text   = "Xoay xe: " .. YAW .. " do"
+    tbSpeed.Text = tostring(SPEED)
+end
+refresh()
+
+tbSpeed.FocusLost:Connect(function()
+    local n = tonumber(tbSpeed.Text)
+    if n then SPEED = math.clamp(n, 20, SPEED_MAX) end
+    refresh()
+end)
+
+status(#pts >= 2 and (#pts .. " diem, " .. math.floor(TOTAL) .. " stud") or ("Khong doc duoc " .. FILE))
+
+-- ===== XE =====
+local running = false
+
+local function findCar()
+    local vf = workspace:FindFirstChild("Vehicles")
+    if not vf then return nil end
+    local f = vf:FindFirstChild(lp.Name)
+    if not f then
+        for _, c in ipairs(vf:GetChildren()) do
+            if c.Name:lower():find(lp.Name:lower()) then f = c; break end
+        end
+    end
+    if not f then return nil end
+    local m = f:FindFirstChildOfClass("Model")
+    if not m then
+        for _, c in ipairs(f:GetChildren()) do
+            if c:IsA("Model") then m = c; break end
+        end
+    end
+    if not m then return nil end
+    local s = m:FindFirstChild("DriveSeat", true)
+        or m:FindFirstChildWhichIsA("VehicleSeat", true)
+        or m:FindFirstChildWhichIsA("Seat", true)
+    if s then return m, s end
+end
+
+-- v6.8: kiểm tra nhanh, chỉ đọc SeatPart (không quét gì nặng)
+local function isSeatedIn(car)
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    local sp = hum and hum.SeatPart
+    return sp ~= nil and car ~= nil and sp:IsDescendantOf(car)
+end
+
+local function waitFor(fn, timeout)
+    local t = os.clock()
+    while running and os.clock() - t < timeout do
+        local r = fn()
+        if r then return r end
+        task.wait(0.25)
+    end
+end
+
+local function isVehicleMenuOpen()
+    local selV = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle")
+    return selV and shown(selV)
+end
+
+local function spawnCar()
+    if not isVehicleMenuOpen() then
+        status("Mo menu xe...")
+        local menuVehicle = P(pg, "MainUI", "MainFrame", "Menu", "Vehicle")
+        if menuVehicle then
+            click(menuVehicle)
+            local t = os.clock()
+            while os.clock() - t < 5 do
+                if isVehicleMenuOpen() then break end
+                task.wait(0.25)
+            end
+            task.wait(0.5)
+        else
+            print("   ⚠️ Không tìm thấy Menu.Vehicle")
+            return nil
+        end
+    end
+
+    if VEHICLE_NAME ~= "" then
+        local list = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle", "ListPane", "VehicleList")
+        if list then
+            local veh = list:FindFirstChild(VEHICLE_NAME)
+            if veh then
+                print("   🚗 Chọn xe:", VEHICLE_NAME)
+                click(veh)
+                task.wait(0.8)
+            end
+        end
+    end
+
+    status("Click Spawn...")
+    task.wait(0.3)
+
+    local spawnBtn = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle", "Hero", "Acts", "Spawn")
+    if not spawnBtn then
+        local selV = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle")
+        if selV then
+            for _, v in ipairs(selV:GetDescendants()) do
+                if v:IsA("GuiButton") and v.Visible and v.AbsoluteSize.X > 20 then
+                    local n = v.Name:lower()
+                    local t = (v:IsA("TextButton") and v.Text or ""):lower()
+                    if n:find("spawn") or t:find("spawn") then
+                        spawnBtn = v
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not spawnBtn then
+        print("   ❌ Không tìm thấy nút Spawn")
+        return nil
+    end
+
+    click(spawnBtn)
+    status("Cho xe spawn...")
+    task.wait(2)
+
+    return waitFor(function()
+        local c, s = findCar()
+        if c then
+            print("   ✅ Xe đã spawn:", c:GetFullName())
+            return {c, s}
+        end
+    end, 20)
+end
+
+local function sit(seat)
+    local ch  = lp.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if not (hum and hrp) then return false end
+
+    local car = seat:FindFirstAncestorOfClass("Model")
+    local prompt
+    if car then
+        for _, v in ipairs(car:GetDescendants()) do
+            if v:IsA("ProximityPrompt") and v.Enabled then
+                prompt = v
+                break
+            end
+        end
+    end
+    if not prompt then
+        prompt = seat:FindFirstChildWhichIsA("ProximityPrompt", true)
+    end
+
+    if not prompt then
+        print("   ⚠️ Không có ProximityPrompt → fallback sit")
+        pcall(function() seat:Sit(hum) end)
+        task.wait(1.5)
+        return hum.SeatPart ~= nil
+    end
+
+    local holdDur = prompt.HoldDuration or 0
+    print(string.format("   🪑 Prompt: %s | Hold: %.2fs", prompt:GetFullName(), holdDur))
+
+    for attempt = 1, 6 do
+        if hum.SeatPart then
+            print("   ✅ Đã ngồi (SeatPart = " .. hum.SeatPart.Name .. ")")
+            return true
+        end
+
+        local carCF = car and car:GetPivot() or seat.CFrame
+        local sideOffset = carCF:VectorToWorldSpace(Vector3.new(4, 0, 0))
+        local standPos = CFrame.new(seat.Position + sideOffset + Vector3.new(0, 2, 0))
+
+        hrp.CFrame = standPos
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+        task.wait(0.6)
+
+        if fireproximityprompt then
+            pcall(function() fireproximityprompt(prompt) end)
+            task.wait(math.max(holdDur, 0.3) + 0.5)
+        end
+
+        if not hum.SeatPart then
+            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(math.max(holdDur, 0.5) + 0.3)
+            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            task.wait(0.5)
+        end
+
+        print(string.format("   🔄 Lần %d | Seated: %s", attempt, tostring(hum.SeatPart ~= nil)))
+    end
+
+    return hum.SeatPart ~= nil
+end
+
+local function setupRaceConstraints(root)
+    for _, n in ipairs({"RaceAttachment", "RaceLinearVelocity", "RaceAlignOrientation"}) do
+        local old = root:FindFirstChild(n)
+        if old then old:Destroy() end
+    end
+
+    local att = Instance.new("Attachment")
+    att.Name = "RaceAttachment"
+    att.Parent = root
+
+    local lv = Instance.new("LinearVelocity")
+    lv.Name = "RaceLinearVelocity"
+    lv.Attachment0 = att
+    lv.MaxForce = MAX_FORCE
+    lv.VectorVelocity = Vector3.zero
+    lv.RelativeTo = Enum.ActuatorRelativeTo.World
+    pcall(function()
+        lv.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+        lv.MaxAxesForce = Y_FORCE_FULL
+            and Vector3.new(MAX_FORCE, MAX_FORCE, MAX_FORCE)
+            or  Vector3.new(MAX_FORCE, 0, MAX_FORCE)
+    end)
+    lv.Parent = root
+
+    local ao = Instance.new("AlignOrientation")
+    ao.Name = "RaceAlignOrientation"
+    ao.Attachment0 = att
+    ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    ao.MaxTorque = MAX_FORCE
+    ao.Responsiveness = math.clamp(AO_RESPONSIVE, 1, 200)
+    ao.RigidityEnabled = false
+    ao.Parent = root
+
+    return lv, ao, att
+end
+
+local function cleanupRace(lv, ao, att)
+    if lv  then pcall(function() lv:Destroy()  end) end
+    if ao  then pcall(function() ao:Destroy()  end) end
+    if att then pcall(function() att:Destroy() end) end
+end
+
+-- ===== CHẠY 1 VÒNG =====
+local function runLap(car, seat)
+    local root = seat.AssemblyRootPart or seat
+    local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if not (car and car.Parent and seat.Parent and root) then return false end
+
+    local d0, dist0 = nearestD(root.Position)
+    if dist0 > MAX_PATH_DIST then
+        print(string.format("   ❌ Xe cách path %.0f stud (> %d) → không chạy", dist0, MAX_PATH_DIST))
+        return false, "far_from_path"
+    end
+    print(string.format("   📍 Bắt đầu từ d=%.0f/%.0f, lệch %.1f stud", d0, TOTAL, dist0))
+
+    local d, t0 = d0, os.clock()
+    local look = (at(math.min(d0 + LOOKAHEAD, TOTAL)) - at(d0))
+    look = look.Magnitude > 0.01 and look.Unit or root.CFrame.LookVector
+    local cur, jit, jitYaw, nextJ, miss = 0, 0, 0, 0, 0
+    local maxT = (TOTAL - d0) / math.max(SPEED - 5, 20) * 1.6 + 15
+
+    local releaseDist = math.max(RELEASE_MIN_DIST, SPEED * RELEASE_TIME_AHEAD)
+    local released, releaseT0, releaseV0, releaseDur = false, 0, 0, 0
+
+    local function poseDir(dir)
+        return CFrame.lookAt(Vector3.zero, dir * CAR_FORWARD_SIGN)
+            * CFrame.Angles(0, math.rad(YAW), 0)
+    end
+
+    local lv, ao, att = setupRaceConstraints(root)
+
+    lv.VectorVelocity = Vector3.zero
+    ao.CFrame = poseDir(look)
+    task.wait(WARMUP_TIME)
+
+    if root.Parent then
+        d = select(1, projectD(root.Position, d0))
+    end
+
+    while running do
+        local dt  = RS.Heartbeat:Wait()
+        local now = os.clock()
+
+        if not car.Parent or not seat.Parent or not root.Parent then
+            cleanupRace(lv, ao, att)
+            return false
+        end
+        if now - t0 > maxT then
+            smoothStop(lv, root, STOP_TIME_STOP)
+            task.wait(0.25)
+            cleanupRace(lv, ao, att)
+            return false
+        end
+        if hum and not hum.SeatPart then
+            miss += 1
+            if miss > 30 then
+                cleanupRace(lv, ao, att)
+                return false
+            end
+        else
+            miss = 0
+        end
+
+        if now >= nextJ then
+            jit    = math.random(JITTER_MIN, JITTER_MAX)
+            jitYaw = (math.random() - 0.5) * 2 * YAW_NOISE
+            nextJ  = now + rnd(0.3, 0.9)
+        end
+
+        cur = cur + (SPEED + jit - cur) * math.clamp(dt / ACCEL_TAU, 0, 1)
+
+        local realPos = root.Position
+        local realD, distToPath = projectD(realPos, d)
+
+        if released then
+            if realD > d then d = math.min(realD, TOTAL) end
+
+            local elapsed = now - releaseT0
+            if elapsed >= releaseDur then
+                if lv.Parent then lv.VectorVelocity = Vector3.zero end
+                task.wait(0.2)
+                cleanupRace(lv, ao, att)
+                return true
+            end
+
+            local a = 1 - elapsed / releaseDur
+            a = math.clamp(a, 0, 1) * math.clamp(a, 0, 1)
+            local dv
+            if d < TOTAL then
+                local p = at(d)
+                local dd = at(math.min(d + LOOKAHEAD, TOTAL)) - p
+                dv = dd.Magnitude > 0.01 and dd.Unit or look
+            else
+                dv = look
+            end
+            local targetV
+            if Y_FORCE_FULL then
+                targetV = dv * (releaseV0 * a)
+            else
+                local flat = Vector3.new(dv.X, 0, dv.Z)
+                targetV = flat.Magnitude > 0.01 and flat.Unit * (releaseV0 * a) or Vector3.zero
+            end
+            lv.VectorVelocity = targetV
+
+            local l = look:Lerp(dv, math.clamp(LOOK_LERP_RATE * dt, 0, 1))
+            if l.Magnitude > 0.01 then look = l.Unit end
+            ao.CFrame = poseDir(look)
+
+            lbProg.Text  = string.format("Tien do: %d%% (phanh)", math.min(100, math.floor(d / TOTAL * 100)))
+            lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0)
+            lbSpeed.Text = string.format("Phanh cuoi: %.0f -> 0", releaseV0 * a)
+        else
+            if distToPath <= MAX_PATH_DIST then
+                d = math.min(realD + cur * dt, TOTAL)
+            else
+                d = math.min(d + cur * dt * 0.5, TOTAL)
+            end
+
+            if d >= TOTAL - releaseDist then
+                released   = true
+                releaseT0  = now
+                releaseV0  = math.max(cur, lv.VectorVelocity.Magnitude)
+                local want = (TOTAL - d) + FINISH_OVERSHOOT
+                releaseDur = math.clamp(3 * want / math.max(releaseV0, 30), FINISH_DUR_MIN, FINISH_DUR_MAX)
+                print(string.format("   🏁 Phanh cuối: v0=%.0f, còn %.0f stud, dur=%.2fs",
+                    releaseV0, TOTAL - d, releaseDur))
+            else
+                local pos = at(d)
+                local dir = at(d + LOOKAHEAD) - pos
+                local dv
+                if dir.Magnitude > 0.01 then
+                    dv = dir.Unit
+                else
+                    dv = look
+                end
+                if Y_FORCE_FULL then
+                    lv.VectorVelocity = dv * cur
+                else
+                    local flat = Vector3.new(dv.X, 0, dv.Z)
+                    if flat.Magnitude > 0.01 then
+                        lv.VectorVelocity = flat.Unit * cur
+                    end
+                end
+                local l = look:Lerp(dv, math.clamp(LOOK_LERP_RATE * dt, 0, 1))
+                if l.Magnitude > 0.01 then look = l.Unit end
+                ao.CFrame = poseDir(look) * CFrame.Angles(0, math.rad(jitYaw), 0)
+
+                lbProg.Text  = string.format("Tien do: %d%%", d / TOTAL * 100)
+                lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0)
+                lbSpeed.Text = string.format("Toc do: %d | Lech: %.1f", math.floor(cur + 0.5), distToPath)
+            end
+        end
+    end
+
+    if not released then
+        smoothStop(lv, root, STOP_TIME_STOP)
+        task.wait(0.25)
+    end
+    cleanupRace(lv, ao, att)
+    return false
+end
+
+-- ===== VÒNG LẶP CHÍNH =====
+local cycles = 0
+
+local function getQuick()
+    local q = P(pg, "RacingUI", "MainFrame", "MenuPanel", "Footer", "Quick")
+    return q and shown(q) and q or nil
+end
+local function getClose()
+    local c = P(pg, "RacingUI", "MainFrame", "Overlay", "Leaderboard", "Close")
+    return c and shown(c) and c or nil
+end
+
+local function isTeleportOpen()
+    local t = P(pg, "MainUI", "MainFrame", "Selected", "Teleport")
+    return t and shown(t)
+end
+
+local function findRaidEntry(list)
+    if RAID_TELEPORT_NAME ~= "" then
+        return list:FindFirstChild(RAID_TELEPORT_NAME)
+    end
+    local matches = {}
+    for _, e in ipairs(list:GetChildren()) do
+        if e.Name ~= "GP_Track_Race" then
+            local txt = ""
+            for _, d in ipairs(e:GetDescendants()) do
+                if d:IsA("TextLabel") or d:IsA("TextButton") then txt = txt .. " " .. d.Text end
+            end
+            if (e.Name .. txt):lower():find("raid", 1, true) then matches[#matches + 1] = e end
+        end
+    end
+    if #matches == 1 then return matches[1] end
+    return nil
+end
+
+local function teleportToRaidArea()
+    if not isTeleportOpen() then
+        local menuTp = P(pg, "MainUI", "MainFrame", "Menu", "Teleport")
+        if not menuTp then print("   ❌ Không thấy Menu.Teleport") return false end
+        status("Mo UI Teleport...")
+        click(menuTp)
+        local t = os.clock()
+        while running and os.clock() - t < 5 do
+            if isTeleportOpen() then break end
+            task.wait(0.25)
+        end
+        if not isTeleportOpen() then print("   ❌ UI Teleport không mở") return false end
+        task.wait(0.5)
+    end
+
+    local tab = P(pg, "MainUI", "MainFrame", "Selected", "Teleport", "Tabs", "Races")
+    if not tab then print("   ❌ Không thấy Tabs.Races") return false end
+    click(tab)
+    task.wait(0.6)
+
+    local list
+    local t = os.clock()
+    while running and os.clock() - t < 5 do
+        list = P(pg, "MainUI", "MainFrame", "Selected", "Teleport", "List")
+        if list and #list:GetChildren() > 0 then break end
+        task.wait(0.25)
+    end
+    if not list then print("   ❌ Không thấy Teleport.List") return false end
+
+    local entry = findRaidEntry(list)
+    if not entry then
+        print("   ❌ Chưa xác định được mục teleport raid:")
+        for _, e in ipairs(list:GetChildren()) do print("      -", e.Name, e.ClassName) end
+        return false
+    end
+
+    local btn = entry:FindFirstChild("Button") or entry
+    print("   🎯 Teleport tới mục:", entry.Name)
+    status("Teleport: " .. entry.Name)
+    click(btn)
+    task.wait(WAIT_AFTER_TELEPORT)
+    return true
+end
+
+local function driveToRaid(seat)
+    local root = seat and seat.Parent and (seat.AssemblyRootPart or seat)
+    if not root then return false end
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    local lv, ao, att = setupRaceConstraints(root)
+    local t0, reached = os.clock(), false
+
+    while running and os.clock() - t0 < RAID_DRIVE_TIMEOUT do
+        if not seat.Parent or not root.Parent then break end
+        if hum and not hum.SeatPart then break end
+        if getQuick() then reached = true break end
+
+        local pos = root.Position
+        local to = Vector3.new(RAID_POS.X - pos.X, 0, RAID_POS.Z - pos.Z)
+        local dist = to.Magnitude
+        if dist <= RAID_ARRIVE_DIST then reached = true break end
+
+        local dir = to.Unit
+        lv.VectorVelocity = dir * math.clamp(dist, 15, RAID_DRIVE_SPEED)
+        ao.CFrame = CFrame.lookAt(Vector3.zero, dir * CAR_FORWARD_SIGN)
+            * CFrame.Angles(0, math.rad(YAW), 0)
+        lbProg.Text = string.format("Toi raid: %d stud", dist)
+        RS.Heartbeat:Wait()
+    end
+
+    if lv.Parent and root.Parent then
+        smoothStop(lv, root, STOP_TIME_RAID)
+        task.wait(0.3)
+    end
+    cleanupRace(lv, ao, att)
+    return reached
+end
+
+local function mainLoop()
+    local stopReason
+    while running do
+        local car, seat
+
+        -- Check ngồi NHANH: đang ngồi → TP thẳng; không ngồi → spawn xe mới
+        local c0, s0 = findCar()
+        if c0 and s0 and s0.Parent and isSeatedIn(c0) then
+            car, seat = c0, s0
+            status("Dang ngoi tren xe, TP thang")
+            print("   ♻️ Đang ngồi trên xe → bỏ qua spawn, TP thẳng")
+        else
+            print("   🚗 Không ngồi trên xe → spawn xe mới")
+            status("Spawn xe...")
+            local r = spawnCar()
+            if not r then status("Khong spawn duoc, thu lai") task.wait(3) continue end
+            car, seat = r[1], r[2]
+
+            status("Đợi " .. WAIT_AFTER_SPAWN .. "s...")
+            task.wait(WAIT_AFTER_SPAWN)
+
+            status("Lại gần xe + giữ E...")
+            if not sit(seat) then status("Khong ngoi duoc, thu lai") task.wait(3) continue end
+            task.wait(rnd(0.5, 1))
+        end
+
+        if not teleportToRaidArea() then
+            status("Khong vao duoc khu raid, thu lai")
+            task.wait(3)
+            continue
+        end
+
+        local r2 = waitFor(function()
+            local c, s = findCar()
+            if c and s and s.Parent then return {c, s} end
+        end, 15)
+        if not r2 then status("Mat xe sau teleport, lam lai") task.wait(2) continue end
+        car, seat = r2[1], r2[2]
+
+        local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+        if hum and not hum.SeatPart then
+            status("Ngoi lai xe...")
+            if not sit(seat) then status("Khong ngoi lai duoc, lam lai") task.wait(3) continue end
+        end
+
+        status("Lai xe den khu raid...")
+        local arrived = driveToRaid(seat)
+        if not running then break end
+        if not arrived and not getQuick() then
+            status("Chua toi khu raid, lam lai")
+            task.wait(2)
+            continue
+        end
+
+        status("Cho menu raid...")
+        local q = waitFor(getQuick, 20)
+        if not q then status("Menu khong hien, lam lai") task.wait(2) continue end
+        task.wait(rnd(0.5, 1.2))
+        click(q)
+
+        for i = WAIT_AFTER_SOLO, 1, -1 do
+            if not running then break end
+            status("Cho bat dau: " .. i .. "s")
+            task.wait(1)
+        end
+        if not running then break end
+
+        status("Dang dua...")
+        local ok, why = runLap(car, seat)
+        if why == "far_from_path" then
+            stopReason = "Xe qua xa path, da dung"
+            running = false
+            break
+        end
+        status(ok and "Xong vong, cho Close..." or "Loi giua duong, lam lai")
+
+        -- v6.8: Close nhanh, nghỉ ngắn rồi quay lại đầu vòng để check ngồi
+        local c = waitFor(getClose, 20)
+        if c then
+            task.wait(rnd(CLOSE_DELAY_MIN, CLOSE_DELAY_MAX))
+            click(c)
+        end
+        if ok then
+            cycles += 1
+            lbCycle.Text = "So vong da xong: " .. cycles
+        end
+        task.wait(AFTER_CLOSE_WAIT)
+    end
+    running = false
+    status(stopReason or "Da dung")
+end
+
+btnStart.MouseButton1Click:Connect(function()
+    if running then return end
+    if #pts < 2 then status("Chua doc duoc path") return end
+    running = true
+    task.spawn(mainLoop)
+end)
+
+btnStop.MouseButton1Click:Connect(function()
+    if running then
+        running = false
+        status("Dang dung...")
+        task.spawn(function()
+            task.wait(3)
+            local _, seat = findCar()
+            local root = seat and (seat.AssemblyRootPart or seat)
+            if root then
+                for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                    local o = root:FindFirstChild(n)
+                    if o then pcall(function() o:Destroy() end) end
+                end
+            end
+            status("Da dung")
+        end)
+    else
+        local _, seat = findCar()
+        local root = seat and (seat.AssemblyRootPart or seat)
+        if root then
+            for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                local o = root:FindFirstChild(n)
+                if o then pcall(function() o:Destroy() end) end
+            end
+        end
+        status("Da dung")
+    end
+end)
+
+btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
+
+print("✅ Race Playback v6.8 loaded | Path:", #pts, "điểm |", math.floor(TOTAL), "stud")
