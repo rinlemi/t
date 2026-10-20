@@ -14,7 +14,7 @@ local RAND_STEP      = 10
 local RAND_MIN_DIFF  = 20
 
 -- =====================================================================
---  MO HINH XE (gia toc / phanh / do giat)   [stud/s, stud/s^2, stud/s^3]
+--  MO HINH XE (gia toc / phanh / do giat)
 -- =====================================================================
 local ACCEL_MAX      = 40      
 local BRAKE_MAX      = 70      
@@ -49,7 +49,7 @@ local PROFILE_SMOOTH       = 100
 local PROFILE_FLOOR        = 0.5
 
 -- =====================================================================
---  SU KIEN NGAU NHIEN (nha ga / chap phanh)
+--  SU KIEN NGAU NHIEN
 -- =====================================================================
 local EVENTS_ENABLED = true
 local EVENT_GAP_MIN, EVENT_GAP_MAX = 6, 14
@@ -62,13 +62,13 @@ local TAP_DUR_MIN, TAP_DUR_MAX       = 0.15, 0.30
 -- =====================================================================
 --  PHIM BAM THAT
 -- =====================================================================
-local USE_KEY_S = true     
+local USE_KEY_S = false    -- TẮT HOÀN TOÀN TRÊN MOBILE ĐỂ TRÁNH LỖI
 local USE_KEY_W = false    
 local BRAKE_KEY_THRESHOLD = 0.25
 local BRAKE_KEY_MIN_SPEED = 25
 
 -- =====================================================================
---  DANH LAI / DUONG DI KHAC NHAU MOI VONG
+--  DANH LAI / DUONG DI
 -- =====================================================================
 local HUMAN_VARIATION = true
 local LOOKAHEAD_MUL_MIN, LOOKAHEAD_MUL_MAX = 0.95, 1.05
@@ -85,14 +85,12 @@ local RACELINE_K      = 250
 local LAT_TOTAL_MAX   = 5      
 local LAT_FADE_DIST   = 12
 
--- Lai (Stanley + feedforward do cong)
 local STEER_KE        = 3.0
 local STEER_KS        = 10
 local HEADING_GAIN    = 8
 local STEER_MAX_CORR  = math.rad(25)
 local STEER_LAT_MUL   = 1.5    
 
--- Than xe
 local LEAN_FACTOR     = 0.5    
 local LEAN_MAX_DEG    = 22
 local PITCH_PER_ACCEL = 0.05   
@@ -240,9 +238,6 @@ local function smoothArray(src, half)
     return out
 end
 
--- =====================================================================
---  LUOI DO CONG / VAN TOC NGUOI THAT / DUONG DUA (tinh 1 lan luc load)
--- =====================================================================
 local DS = PROFILE_DS
 local G = 0
 local gKL, gAbsK, gHumM, gRace = {}, {}, {}, {}
@@ -304,7 +299,7 @@ local function buildGrid()
     local sm = smoothArray(raw, 12)
     for i = 1, G do gRace[i] = sm[i] * RACELINE_AMP end
 end
-buildGrid()
+pcall(buildGrid)
 
 local function gridAt(arr, d)
     if G < 2 then return 0 end
@@ -349,58 +344,34 @@ local function shown(g)
     return true
 end
 
--- HÀM CLICK ĐÃ ĐƯỢC SỬA ĐỂ TƯƠNG THÍCH 100% VỚI ARCEUS VÀ EXCEL
+-- CLICK TƯƠNG THÍCH 100% MOBILE (KHÔNG DÙNG VIM)
 local function click(obj)
     if not obj then return false end
     local btn = obj:IsA("GuiButton") and obj or obj:FindFirstChildWhichIsA("GuiButton", true)
-    
     if btn then
-        if getconnections then
-            for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
-                local conns = getconnections(btn[ev])
-                if conns then
-                    for _, c in ipairs(conns) do
-                        pcall(function() c:Fire() end)
+        pcall(function()
+            if getconnections then
+                for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+                    local conns = getconnections(btn[ev])
+                    if conns then
+                        for _, c in ipairs(conns) do
+                            c:Fire()
+                        end
                     end
                 end
             end
-        end
-        
-        if firesignal then
-            for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
-                pcall(function() firesignal(btn[ev]) end)
+            if firesignal then
+                for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+                    firesignal(btn[ev])
+                end
             end
-        end
-        
-        pcall(function() btn:Activate() end)
+            btn:Activate()
+        end)
     end
     return true
 end
 
 local function rnd(a, b) return a + math.random() * (b - a) end
-
-local keyState = {}
-local function setKey(code, down)
-    if keyState[code] == down then return end
-    keyState[code] = down
-    -- Sử dụng pcall để tránh lỗi nếu VirtualInputManager không được hỗ trợ
-    pcall(function() 
-        local VIM = game:GetService("VirtualInputManager")
-        VIM:SendKeyEvent(down, code, false, game) 
-    end)
-end
-
-local function releaseKeys()
-    for code, down in pairs(keyState) do
-        if down then
-            pcall(function() 
-                local VIM = game:GetService("VirtualInputManager")
-                VIM:SendKeyEvent(false, code, false, game) 
-            end)
-        end
-        keyState[code] = false
-    end
-end
 
 local lastLapSpeed
 local function pickLapSpeed()
@@ -459,43 +430,27 @@ local function smoothStop(lv, root, duration)
     if lv.Parent then lv.VectorVelocity = Vector3.zero end
 end
 
--- ===== UI PANEL (Phiên bản tương thích Mobile) =====
-local function safeInstance(className, parent)
-    local ok, obj = pcall(function()
-        return Instance.new(className)
-    end)
-    if ok and obj then
-        pcall(function() obj.Parent = parent end)
-        return obj
-    end
-    return nil
-end
+-- ===== UI PANEL AN TOÀN TOÀN TẬP =====
+local gui, panel, lbStatus, lbProg, lbTime, lbSpeed, lbYaw, lbCycle, tbSpeed, btnStart, btnStop, btnYaw
 
-local gui = safeInstance("ScreenGui", nil)
-if gui then
+pcall(function()
+    gui = Instance.new("ScreenGui")
     gui.Name = "RacePlayback"
     gui.ResetOnSpawn = false
     gui.DisplayOrder = 999
     local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
-    if not okParent or not gui.Parent then
-        pcall(function() gui.Parent = pg end)
-    end
-end
+    if not okParent or not gui.Parent then gui.Parent = pg end
 
-local panel = safeInstance("Frame", gui)
-if panel then
+    panel = Instance.new("Frame", gui)
     panel.Size = UDim2.new(0, 240, 0, 304)
     panel.Position = UDim2.new(1, -250, 0.3, 0)
     panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     panel.BackgroundTransparency = 0.15
     panel.BorderSizePixel = 0
-    local corner = safeInstance("UICorner", panel)
-    if corner then corner.CornerRadius = UDim.new(0, 8) end
-end
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
 
-local function label(y, text)
-    local l = safeInstance("TextLabel", panel)
-    if l then
+    local function label(y, text)
+        local l = Instance.new("TextLabel", panel)
         l.Size = UDim2.new(1, -16, 0, 20)
         l.Position = UDim2.new(0, 8, 0, y)
         l.BackgroundTransparency = 1
@@ -504,13 +459,11 @@ local function label(y, text)
         l.TextSize = 13
         l.TextColor3 = Color3.new(1, 1, 1)
         l.Text = text
+        return l
     end
-    return l
-end
 
-local function button(y, text, color)
-    local b = safeInstance("TextButton", panel)
-    if b then
+    local function button(y, text, color)
+        local b = Instance.new("TextButton", panel)
         b.Size = UDim2.new(1, -16, 0, 32)
         b.Position = UDim2.new(0, 8, 0, y)
         b.BackgroundColor3 = color
@@ -519,21 +472,18 @@ local function button(y, text, color)
         b.TextSize = 13
         b.TextColor3 = Color3.new(1, 1, 1)
         b.Text = text
-        local corner = safeInstance("UICorner", b)
-        if corner then corner.CornerRadius = UDim.new(0, 6) end
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        return b
     end
-    return b
-end
 
-local lbStatus = label(28, "")
-local lbProg   = label(48, "Tien do: 0%")
-local lbTime   = label(68, "Thoi gian: 0.0s")
-local lbSpeed  = label(88, "")
-local lbYaw    = label(108, "")
-local lbCycle  = label(128, "So vong da xong: 0")
+    lbStatus = label(28, "")
+    lbProg   = label(48, "Tien do: 0%")
+    lbTime   = label(68, "Thoi gian: 0.0s")
+    lbSpeed  = label(88, "")
+    lbYaw    = label(108, "")
+    lbCycle  = label(128, "So vong da xong: 0")
 
-local tbSpeed = safeInstance("TextBox", panel)
-if tbSpeed then
+    tbSpeed = Instance.new("TextBox", panel)
     tbSpeed.Size = UDim2.new(1, -16, 0, 32)
     tbSpeed.Position = UDim2.new(0, 8, 0, 154)
     tbSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -544,28 +494,30 @@ if tbSpeed then
     tbSpeed.PlaceholderText = "Nhap toc do roi Enter"
     tbSpeed.ClearTextOnFocus = false
     tbSpeed.Text = tostring(SPEED)
-    local corner = safeInstance("UICorner", tbSpeed)
-    if corner then corner.CornerRadius = UDim.new(0, 6) end
-end
+    Instance.new("UICorner", tbSpeed).CornerRadius = UDim.new(0, 6)
 
-local btnStart = button(192, "START", Color3.fromRGB(40, 150, 70))
-local btnStop  = button(230, "STOP", Color3.fromRGB(170, 60, 60))
-local btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
+    btnStart = button(192, "START", Color3.fromRGB(40, 150, 70))
+    btnStop  = button(230, "STOP", Color3.fromRGB(170, 60, 60))
+    btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
+end)
 
 local function status(t)
-    if lbStatus then lbStatus.Text = t end
+    pcall(function() if lbStatus then lbStatus.Text = t end end)
+    print("[STATUS] " .. t)
 end
 
 local function refresh()
-    if SPEED_RANDOM then
-        if lbSpeed then lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX) end
-    else
-        if lbSpeed then lbSpeed.Text = "Toc do cai: " .. SPEED end
-    end
-    if lbYaw then lbYaw.Text = "Xoay xe: " .. YAW .. " do" end
-    if tbSpeed then tbSpeed.Text = tostring(SPEED) end
+    pcall(function()
+        if SPEED_RANDOM then
+            if lbSpeed then lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX) end
+        else
+            if lbSpeed then lbSpeed.Text = "Toc do cai: " .. SPEED end
+        end
+        if lbYaw then lbYaw.Text = "Xoay xe: " .. YAW .. " do" end
+        if tbSpeed then tbSpeed.Text = tostring(SPEED) end
+    end)
 end
-refresh()
+pcall(refresh)
 
 if tbSpeed then
     tbSpeed.FocusLost:Connect(function()
@@ -576,11 +528,6 @@ if tbSpeed then
 end
 
 status(#pts >= 2 and (#pts .. " diem, " .. math.floor(TOTAL) .. " stud") or ("Khong doc duoc " .. FILE))
-if G > 0 then
-    print(string.format("[v8] luoi=%d | cua gat nhat R~%.0f stud | van toc ghi am: %s",
-        G, minRadius == math.huge and 0 or minRadius,
-        REC_DT and string.format("dt=%.4fs", REC_DT) or "khong co (bo qua)"))
-end
 
 local running = false
 
@@ -735,8 +682,8 @@ local function sit(seat)
         local sideOffset = carCF:VectorToWorldSpace(Vector3.new(4, 0, 0))
         local standPos = CFrame.new(seat.Position + sideOffset + Vector3.new(0, 2, 0))
 
-        hrp.CFrame = standPos
-        hum:ChangeState(Enum.HumanoidStateType.Running)
+        pcall(function() hrp.CFrame = standPos end)
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
         task.wait(0.6)
 
         if fireproximityprompt then
@@ -745,16 +692,8 @@ local function sit(seat)
         end
 
         if not hum.SeatPart then
-            -- Sử dụng pcall cho VirtualInputManager
-            pcall(function()
-                local VIM = game:GetService("VirtualInputManager")
-                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-            end)
-            task.wait(math.max(holdDur, 0.5) + 0.3)
-            pcall(function()
-                local VIM = game:GetService("VirtualInputManager")
-                VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-            end)
+            -- Bỏ hoàn toàn VIM, chỉ dựa vào fireproximityprompt
+            pcall(function() seat:Sit(hum) end)
             task.wait(0.5)
         end
 
@@ -807,15 +746,11 @@ local function setupRaceConstraints(root)
 end
 
 local function cleanupRace(lv, ao, att)
-    releaseKeys()
     if lv  then pcall(function() lv:Destroy()  end) end
     if ao  then pcall(function() ao:Destroy()  end) end
     if att then pcall(function() att:Destroy() end) end
 end
 
--- =====================================================================
---  VONG DUA
--- =====================================================================
 local function runLap(car, seat)
     local root = seat.AssemblyRootPart or seat
     local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
@@ -826,15 +761,10 @@ local function runLap(car, seat)
     local cruise = math.min(SPEED, MAX_SAFE_SPEED)
     local prof   = buildLapProfile(cruise, var.alatMul, var.decelMul)
 
-    print(string.format("   🧬 Variation: lane±%.1f | race×%.2f | LA×%.2f | decel×%.2f | alat×%.2f | slow±%.0f%%",
-        var.laneMax, var.raceScale, var.lookaheadMul, var.decelMul, var.alatMul, var.slowAmp * 100))
-
     local d0, dist0 = nearestD(root.Position)
     if dist0 > MAX_PATH_DIST then
-        print(string.format("   ❌ Xe cách path %.0f stud (> %d) → không chạy", dist0, MAX_PATH_DIST))
         return false, "far_from_path"
     end
-    print(string.format("   📍 Bắt đầu từ d=%.0f/%.0f, lệch %.1f stud", d0, TOTAL, dist0))
 
     local t0 = os.clock()
     local d  = d0
@@ -888,29 +818,18 @@ local function runLap(car, seat)
         if USE_KEY_S then
             if sOn then
                 if now >= sUntil or v < 5 then
-                    setKey(Enum.KeyCode.S, false)
                     sOn = false
                     sNext = now + rnd(0.06, 0.18)
                 end
             elseif B > BRAKE_KEY_THRESHOLD and v > BRAKE_KEY_MIN_SPEED and now >= sNext then
-                setKey(Enum.KeyCode.S, true)
                 sOn = true
                 pressCount += 1
                 sUntil = now + math.clamp(0.10 + B * 0.45, 0.10, 0.5)
             end
         end
-        if USE_KEY_W then setKey(Enum.KeyCode.W, T > 0.08 and not released) end
     end
 
     local lv, ao, att = setupRaceConstraints(root)
-    do
-        local okM, mass = pcall(function() return root.AssemblyMass end)
-        if okM and type(mass) == "number" then
-            print(string.format("   ⚖️ AssemblyMass=%.0f | lực LV=%.0f → gia tốc tối đa ≈ %.0f stud/s²",
-                mass, lv.MaxForce, lv.MaxForce / math.max(mass, 1)))
-        end
-    end
-
     lv.VectorVelocity = Vector3.zero
     ao.CFrame = poseDir(bodyDirOf(vdir, slopeF), 0, 0)
     task.wait(WARMUP_TIME)
@@ -933,14 +852,12 @@ local function runLap(car, seat)
         end
 
         if hum and not hum.SeatPart then
-            print("   ⚠️ Bị văng khỏi xe! Dừng vòng đua.")
             cleanupRace(lv, ao, att)
             return false, "ejected"
         end
 
         if now - t0 > maxT then
             smoothStop(lv, root, STOP_TIME_STOP)
-            task.wait(0.25)
             cleanupRace(lv, ao, att)
             return false
         end
@@ -959,8 +876,6 @@ local function runLap(car, seat)
             releaseV0 = math.max(v, 1)
             local want = (TOTAL - d) + finishOS
             releaseDur = math.clamp(2.2 * want / math.max(releaseV0, 30), FINISH_DUR_MIN, FINISH_DUR_MAX)
-            print(string.format("   🏁 Phanh cuối: v0=%.0f, còn %.0f stud, dur=%.2fs",
-                releaseV0, TOTAL - d, releaseDur))
         end
 
         local span  = LOOKAHEAD * var.lookaheadMul + v * 0.05
@@ -1012,9 +927,6 @@ local function runLap(car, seat)
                 if lv.Parent then lv.VectorVelocity = Vector3.zero end
                 task.wait(0.2)
                 cleanupRace(lv, ao, att)
-                local el = now - t0
-                print(string.format("   📊 Vòng: %.1fs | TB %.0f | max %.0f | S×%d | sự kiện %d",
-                    el, (d - d0) / math.max(el, 1), maxV, pressCount, evCount))
                 return true
             end
             local xs = x ^ finishShape
@@ -1125,17 +1037,18 @@ local function runLap(car, seat)
 
         if now >= uiNext then
             uiNext = now + 0.1
-            if lbProg then lbProg.Text  = string.format("Tien do: %d%%%s", math.floor(d / TOTAL * 100), released and " (phanh)" or "") end
-            if lbTime then lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0) end
-            if lbSpeed then lbSpeed.Text = string.format("Toc do: %d | Ga %d%% Phanh %d%%",
-                math.floor(v + 0.5), math.floor(T * 100 + 0.5), math.floor(B * 100 + 0.5)) end
-            if lbYaw then lbYaw.Text   = string.format("Lech: %.1f | Lan: %+.1f", distToPath, lat) end
+            pcall(function()
+                if lbProg then lbProg.Text  = string.format("Tien do: %d%%%s", math.floor(d / TOTAL * 100), released and " (phanh)" or "") end
+                if lbTime then lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0) end
+                if lbSpeed then lbSpeed.Text = string.format("Toc do: %d | Ga %d%% Phanh %d%%",
+                    math.floor(v + 0.5), math.floor(T * 100 + 0.5), math.floor(B * 100 + 0.5)) end
+                if lbYaw then lbYaw.Text   = string.format("Lech: %.1f | Lan: %+.1f", distToPath, lat) end
+            end)
         end
     end
 
     if not released then
         smoothStop(lv, root, STOP_TIME_STOP)
-        task.wait(0.25)
     end
     cleanupRace(lv, ao, att)
     return false
@@ -1206,8 +1119,7 @@ local function teleportToRaidArea()
 
     local entry = findRaidEntry(list)
     if not entry then
-        print("   ❌ Chưa xác định được mục teleport raid:")
-        for _, e in ipairs(list:GetChildren()) do print("      -", e.Name, e.ClassName) end
+        print("   ❌ Chưa xác định được mục teleport raid")
         return false
     end
 
@@ -1279,7 +1191,6 @@ local function driveToRaid(seat)
 
         local vt = 0
         if not stopping then
-            -- Đã sửa dòng này: bỏ "+ 6" thành "+ 0" để không bị trượt đà
             local brakeV = math.sqrt(2 * RAID_DECEL * math.max(dist - arriveDist, 0)) + 0
             vt = math.min(cruise, brakeV) * math.clamp(1 - math.abs(errA) / 1.3, 0.3, 1)
         end
@@ -1312,29 +1223,15 @@ local function driveToRaid(seat)
             * CFrame.Angles(pitchA * CAR_FORWARD_SIGN, 0, rollF * CAR_FORWARD_SIGN)
             * CFrame.Angles(0, math.rad(YAW), 0)
 
-        if USE_KEY_S then
-            local Bk = math.clamp(-aLong / BRAKE_MAX, 0, 1)
-            if sOn then
-                if now >= sUntil or v < 5 then
-                    setKey(Enum.KeyCode.S, false)
-                    sOn = false
-                    sNext = now + rnd(0.06, 0.18)
-                end
-            elseif Bk > BRAKE_KEY_THRESHOLD and v > BRAKE_KEY_MIN_SPEED and now >= sNext then
-                setKey(Enum.KeyCode.S, true)
-                sOn = true
-                sUntil = now + math.clamp(0.10 + Bk * 0.45, 0.10, 0.5)
-            end
-        end
-
         if now >= uiNext then
             uiNext = now + 0.1
-            if lbProg then lbProg.Text = string.format("Toi raid: %d stud", math.floor(dist)) end
-            if lbSpeed then lbSpeed.Text = string.format("Toc do: %d", math.floor(v + 0.5)) end
+            pcall(function()
+                if lbProg then lbProg.Text = string.format("Toi raid: %d stud", math.floor(dist)) end
+                if lbSpeed then lbSpeed.Text = string.format("Toc do: %d", math.floor(v + 0.5)) end
+            end)
         end
     end
 
-    releaseKeys()
     if lv.Parent and root.Parent then
         smoothStop(lv, root, STOP_TIME_RAID)
         task.wait(0.3)
@@ -1352,7 +1249,6 @@ local function mainLoop()
         if c0 and s0 and s0.Parent and isSeatedIn(c0) then
             car, seat = c0, s0
             status("Dang ngoi tren xe, TP thang")
-            print("   ♻️ Đang ngồi trên xe → bỏ qua spawn, TP thẳng")
         else
             print("   🚗 Không ngồi trên xe → spawn xe mới")
             status("Spawn xe...")
@@ -1430,12 +1326,11 @@ local function mainLoop()
         end
         if ok then
             cycles += 1
-            if lbCycle then lbCycle.Text = "So vong da xong: " .. cycles end
+            pcall(function() if lbCycle then lbCycle.Text = "So vong da xong: " .. cycles end end)
         end
         task.wait(AFTER_CLOSE_WAIT)
     end
     running = false
-    releaseKeys()
     status(stopReason or "Da dung")
 end
 
@@ -1450,7 +1345,6 @@ end
 
 if btnStop then
     btnStop.MouseButton1Click:Connect(function()
-        releaseKeys()
         if running then
             running = false
             status("Dang dung...")
@@ -1464,7 +1358,6 @@ if btnStop then
                         if o then pcall(function() o:Destroy() end) end
                     end
                 end
-                releaseKeys()
                 status("Da dung")
             end)
         else
@@ -1484,3 +1377,5 @@ end
 if btnYaw then
     btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
 end
+
+--a
