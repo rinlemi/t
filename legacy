@@ -18,36 +18,36 @@ local RAND_MIN_DIFF  = 20
 -- =====================================================================
 --  MO HINH XE (gia toc / phanh / do giat)   [stud/s, stud/s^2, stud/s^3]
 -- =====================================================================
-local ACCEL_MAX      = 40      -- gia toc toi da khi toc do thap (0->100 mat ~4s)
-local BRAKE_MAX      = 70      -- luc phanh toi da (khi bam S het co)
-local COAST_BASE     = 4       -- xe tu cham lai khi nha ga (phanh dong co)
-local COAST_QUAD     = 0.00015 -- + can gio ti le v^2
-local VMAX_MUL       = 2.0     -- toc do dinh dong co = max(SPEED*VMAX_MUL, 250)
-local JERK_UP        = 70      -- do giat khi gia toc tang (cang nho cang em)
-local JERK_DOWN      = 150     -- khi nha ga / tha phanh
-local JERK_BRAKE     = 180     -- khi bat dau dap phanh
-local THR_UP, THR_DN = 2.5, 3.0  -- toc do nhan chan ga (1/s)
-local BRK_UP, BRK_DN = 5.0, 6.0  -- toc do nhan chan phanh (1/s)
-local SPEED_KP       = 1.2     -- do "nhay" cua tai xe khi bam theo toc do muc tieu
-local PREVIEW_TIME   = 0.15    -- nhin truoc bao nhieu giay de quyet dinh ga/phanh
-local REACTION_MIN, REACTION_MAX = 0.15, 0.45  -- do tre luc xuat phat
-local GEAR_SHIFTS    = {45, 80, 115, 150, 185, 220} -- moc toc do len so
-local SHIFT_CUT_MIN, SHIFT_CUT_MAX = 0.10, 0.18      -- thoi gian mat luc khi len so
-local SHIFT_CUT_FACTOR = 0.2   -- luc con lai trong luc len so (0.2 = 20%)
-local SYNC_DEAD      = 30      -- xe that cham hon mo hinh > nay thi mo hinh ha theo
+local ACCEL_MAX      = 40
+local BRAKE_MAX      = 70
+local COAST_BASE     = 4
+local COAST_QUAD     = 0.00015
+local VMAX_MUL       = 2.0
+local JERK_UP        = 70
+local JERK_DOWN      = 150
+local JERK_BRAKE     = 180
+local THR_UP, THR_DN = 2.5, 3.0
+local BRK_UP, BRK_DN = 5.0, 6.0
+local SPEED_KP       = 1.2
+local PREVIEW_TIME   = 0.15
+local REACTION_MIN, REACTION_MAX = 0.15, 0.45
+local GEAR_SHIFTS    = {45, 80, 115, 150, 185, 220}
+local SHIFT_CUT_MIN, SHIFT_CUT_MAX = 0.10, 0.18
+local SHIFT_CUT_FACTOR = 0.2
+local SYNC_DEAD      = 30
 local SYNC_RATE      = 1.5
-local FORCE_PER_MASS = 120     -- MaxForce = max(MAX_FORCE, mass*nay). 0 = tat
+local FORCE_PER_MASS = 120
 
 -- =====================================================================
 --  TOC DO THEO DUONG DUA (cua cong / nguoi that)
 -- =====================================================================
-local A_LAT_MAX            = 170   -- gia toc ngang toi da -> gioi han toc do vao cua
-local DECEL_PLAN           = 35    -- do gat khi tai xe LEN KE HOACH nha ga/phanh vao cua
-local PROFILE_DS           = 4     -- buoc lay mau (stud)
-local CURV_HALF_WIN        = 6     -- cua so tinh do cong = +-6 buoc
-local USE_RECORDED_PROFILE = true  -- dung van toc giua tung cap diem trong race_path
-local PROFILE_STRENGTH     = 0.35  -- 0 = bo qua, 1 = bam het toc do nguoi that
-local PROFILE_SMOOTH       = 100   -- lam muot van toc ghi am (stud)
+local A_LAT_MAX            = 170
+local DECEL_PLAN           = 35
+local PROFILE_DS           = 4
+local CURV_HALF_WIN        = 6
+local USE_RECORDED_PROFILE = true
+local PROFILE_STRENGTH     = 0.35
+local PROFILE_SMOOTH       = 100
 local PROFILE_FLOOR        = 0.5
 
 -- =====================================================================
@@ -55,17 +55,17 @@ local PROFILE_FLOOR        = 0.5
 -- =====================================================================
 local EVENTS_ENABLED = true
 local EVENT_GAP_MIN, EVENT_GAP_MAX = 6, 14
-local LIFT_CHANCE    = 0.6                -- 60% nha ga, 40% chap phanh S
-local LIFT_DEPTH_MIN, LIFT_DEPTH_MAX = 0.04, 0.10   -- giam 4-10% toc do muc tieu
+local LIFT_CHANCE    = 0.6
+local LIFT_DEPTH_MIN, LIFT_DEPTH_MAX = 0.04, 0.10
 local LIFT_DUR_MIN, LIFT_DUR_MAX     = 1.0, 2.2
-local TAP_LEVEL_MIN, TAP_LEVEL_MAX   = 0.30, 0.45   -- luc phanh khi chap
+local TAP_LEVEL_MIN, TAP_LEVEL_MAX   = 0.30, 0.45
 local TAP_DUR_MIN, TAP_DUR_MAX       = 0.15, 0.30
 
 -- =====================================================================
 --  PHIM BAM THAT
 -- =====================================================================
-local USE_KEY_S = true     -- nhan S dang "nhap" khi phanh
-local USE_KEY_W = false    -- giu W khi dang ga (mac dinh tat)
+local USE_KEY_S = true
+local USE_KEY_W = false
 local BRAKE_KEY_THRESHOLD = 0.25
 local BRAKE_KEY_MIN_SPEED = 25
 
@@ -74,17 +74,17 @@ local BRAKE_KEY_MIN_SPEED = 25
 -- =====================================================================
 local HUMAN_VARIATION = true
 local LOOKAHEAD_MUL_MIN, LOOKAHEAD_MUL_MAX = 0.95, 1.05
-local YAW_NOISE_AMP_MIN, YAW_NOISE_AMP_MAX = 0.5, 1.5   -- do, rung than xe
+local YAW_NOISE_AMP_MIN, YAW_NOISE_AMP_MAX = 0.5, 1.5
 local SLOW_AMP_MIN, SLOW_AMP_MAX   = 0.01, 0.03
 local SLOW_FREQ_MIN, SLOW_FREQ_MAX = 0.15, 0.4
 
-local LANE_MAX        = 3.5    -- lech ngang toi da cua "lan" (stud)
-local LANE_CHANGE_MIN, LANE_CHANGE_MAX = 4, 9  -- doi lan moi 4-9s
-local LANE_OMEGA      = 1.5    -- do em khi doi lan
-local LANE_MAX_VEL    = 3      -- toc do doi lan toi da (stud/s)
-local RACELINE_AMP    = 1.5    -- an vao trong khi vao cua (stud)
-local RACELINE_K      = 250    -- do cong de dat lech toi da (1/ban kinh)
-local LAT_TOTAL_MAX   = 5      -- tong lech toi da so voi path
+local LANE_MAX        = 3.5
+local LANE_CHANGE_MIN, LANE_CHANGE_MAX = 4, 9
+local LANE_OMEGA      = 1.5
+local LANE_MAX_VEL    = 3
+local RACELINE_AMP    = 1.5
+local RACELINE_K      = 250
+local LAT_TOTAL_MAX   = 5
 local LAT_FADE_DIST   = 12
 
 -- Lai (Stanley + feedforward do cong)
@@ -92,12 +92,12 @@ local STEER_KE        = 3.0
 local STEER_KS        = 10
 local HEADING_GAIN    = 8
 local STEER_MAX_CORR  = math.rad(25)
-local STEER_LAT_MUL   = 1.5    -- toc do quay toi da = A_LAT_MAX*nay / v
+local STEER_LAT_MUL   = 1.5
 
 -- Than xe
-local LEAN_FACTOR     = 0.5    -- nghieng khi vao cua (xe may ~0.5-0.8, o to 0.1-0.2, 0 = tat)
+local LEAN_FACTOR     = 0.5
 local LEAN_MAX_DEG    = 22
-local PITCH_PER_ACCEL = 0.05   -- do chup/ngoi dau xe tren moi stud/s^2
+local PITCH_PER_ACCEL = 0.05
 local PITCH_MAX_DEG   = 3
 
 local YAW        = 0
@@ -111,18 +111,21 @@ local MAX_FORCE = 5e4
 
 local RAID_TELEPORT_NAME = "GP_Track_Race"
 local WAIT_AFTER_TELEPORT = 7
-local RAID_SPEED_MIN, RAID_SPEED_MAX = 60, 61  -- toc do chay toi raid (random moi lan)
-local RAID_ACCEL        = 25    -- gia toc khi chay toi raid
-local RAID_DECEL        = 100    -- do gat khi phanh de dung
-local RAID_HEADING_GAIN = 3.0   -- do gat khi quay dau ve phia raid (nho = quay em)
-local RAID_MIN_RADIUS   = 25    -- ban kinh quay toi thieu (toc do thap quay cham)
-local RAID_WOBBLE       = 0.03  -- rung nhe khi lai (rad/s)
-local RAID_GOAL_JITTER  = 4     -- diem dung lech ngau nhien +-4 stud, khong dung dung 1 cho
+local RAID_SPEED_MIN, RAID_SPEED_MAX = 60, 61
+local RAID_ACCEL        = 25
+local RAID_DECEL        = 100
+local RAID_HEADING_GAIN = 3.0
+local RAID_MIN_RADIUS   = 25
+local RAID_WOBBLE       = 0.03
+local RAID_GOAL_JITTER  = 4
 local RAID_ARRIVE_DIST    = 30
 local RAID_DRIVE_TIMEOUT  = 90
 
 local CLOSE_DELAY_MIN, CLOSE_DELAY_MAX = 0.2, 0.4
 local AFTER_CLOSE_WAIT = 0.3
+
+local SOLO_RETRIES      = 4    -- so lan bam lai Solo neu chua vao dua
+local SOLO_CONFIRM_TIME = 12   -- cho toi da bao nhieu giay de xac nhan da vao dua
 
 local CAR_FORWARD_SIGN = 1
 local Y_FORCE_FULL     = false
@@ -137,9 +140,9 @@ local STOP_TIME_STOP   = 1.0
 
 local RELEASE_MIN_DIST   = 30
 local RELEASE_TIME_AHEAD = 0.15
-local FINISH_OVERSHOOT_MIN = 70    -- quang truot qua cuoi path (random moi vong)
+local FINISH_OVERSHOOT_MIN = 70
 local FINISH_OVERSHOOT_MAX = 130
-local FINISH_DRIFT         = 0.05  -- rad, lech huong nhe sau vach dich (random, tu giu gan duong)
+local FINISH_DRIFT         = 0.05
 local FINISH_DUR_MIN     = 1.0
 local FINISH_DUR_MAX     = 3.0
 
@@ -158,7 +161,6 @@ if type(PATH) == "table" and #PATH > 1 then
 end
 local TOTAL = cum[#pts] or 0
 
--- dt giua 2 diem lien tiep luc ghi = TOTAL / (toc do TB) / (so doan)
 local REC_DT
 do
     local avg = PATH_SRC and tonumber(PATH_SRC:match("trung binh%s+([%d%.]+)%s+stud/s"))
@@ -219,7 +221,6 @@ local function nearestD(realPos)
     return projectD(realPos, cum[bestI])
 end
 
--- huong nam ngang don vi tu a -> b (tra ve fallback neu qua ngan), kem do dai
 local function flatDir(a, b, fallback)
     local x, z = b.X - a.X, b.Z - a.Z
     local m = math.sqrt(x*x + z*z)
@@ -227,7 +228,6 @@ local function flatDir(a, b, fallback)
     return fallback, m
 end
 
--- xoay vector quanh truc Y (goc duong = re TRAI)
 local function rotY(vec, a)
     local c, s = math.cos(a), math.sin(a)
     return Vector3.new(vec.X * c + vec.Z * s, 0, -vec.X * s + vec.Z * c)
@@ -246,11 +246,7 @@ local function smoothArray(src, half)
 end
 
 -- =====================================================================
---  LUOI DO CONG / VAN TOC NGUOI THAT / DUONG DUA (tinh 1 lan luc load)
---  gKL   : do cong co dau  (+ = re TRAI), 1/stud
---  gAbsK : |do cong|
---  gHumM : he so toc do nguoi that (0.5..1)
---  gRace : lech ngang kieu racing-line (+ = ben PHAI)
+--  LUOI DO CONG / VAN TOC NGUOI THAT / DUONG DUA
 -- =====================================================================
 local DS = PROFILE_DS
 local G = 0
@@ -280,7 +276,6 @@ local function buildGrid()
         if gAbsK[i] > 1e-5 then minRadius = math.min(minRadius, 1 / gAbsK[i]) end
     end
 
-    -- van toc giua tung cap diem lien tiep (da cat nhieu lag, lam muot)
     if REC_DT and USE_RECORDED_PROFILE then
         local cc = {0}
         for i = 2, #pts do cc[i] = cc[i-1] + math.min(cum[i] - cum[i-1], 7.5) end
@@ -309,7 +304,6 @@ local function buildGrid()
         for i = 1, G do gHumM[i] = 1 end
     end
 
-    -- racing line: an vao phia trong cua (+ = phai)
     local raw = {}
     for i = 1, G do raw[i] = math.clamp(-gKL[i] * RACELINE_K, -1, 1) end
     local sm = smoothArray(raw, 12)
@@ -325,9 +319,6 @@ local function gridAt(arr, d)
     return arr[i + 1] * (1 - f) + arr[i + 2] * f
 end
 
--- Profile toc do muc tieu cho 1 vong:
---   min(toc do cai, toc do nguoi that, gioi han ngang sqrt(A_lat/k))
---   roi lan nguoc de co cho NHA GA / PHANH TRUOC cua (decel co han)
 local function buildLapProfile(cruise, alatMul, decelMul)
     local prof = {}
     local alat = A_LAT_MAX * alatMul
@@ -439,8 +430,8 @@ local function pickLapVariation()
         slowPhase    = math.random() * math.pi * 2,
         laneMax      = LANE_MAX * rnd(0.6, 1.0),
         raceScale    = rnd(0.5, 1.2),
-        decelMul     = rnd(0.85, 1.15),   -- diem nha ga/phanh moi vong mot khac
-        alatMul      = rnd(0.92, 1.05),   -- toc do qua cua moi vong mot khac
+        decelMul     = rnd(0.85, 1.15),
+        alatMul      = rnd(0.92, 1.05),
     }
 end
 
@@ -509,7 +500,7 @@ local function button(y, text, color)
     return b
 end
 
-label(4, "TU DONG DUA RAID v8.0").Font = Enum.Font.GothamBold
+label(4, "TU DONG DUA RAID v8.1").Font = Enum.Font.GothamBold
 local lbStatus = label(28, "")
 local lbProg   = label(48, "Tien do: 0%")
 local lbTime   = label(68, "Thoi gian: 0.0s")
@@ -560,6 +551,17 @@ if G > 0 then
 end
 
 local running = false
+
+-- chong AFK (Roblox kick sau ~20 phut khong thao tac)
+pcall(function()
+    local VU = game:GetService("VirtualUser")
+    lp.Idled:Connect(function()
+        pcall(function()
+            VU:CaptureController()
+            VU:ClickButton2(Vector2.new())
+        end)
+    end)
+end)
 
 local function findCar()
     local vf = workspace:FindFirstChild("Vehicles")
@@ -740,7 +742,6 @@ local function setupRaceConstraints(root)
         if old then old:Destroy() end
     end
 
-    -- luc du de bam theo gia toc/phanh cua mo hinh (xe nang can luc lon hon)
     local force = MAX_FORCE
     if FORCE_PER_MASS > 0 then
         local okM, mass = pcall(function() return root.AssemblyMass end)
@@ -817,7 +818,6 @@ local function runLap(car, seat)
     local finishShape = rnd(0.85, 1.15)
     local released, releaseT0, releaseV0, releaseDur = false, 0, 0, 0
 
-    -- huong chay ban dau (nam ngang) + do doc
     local span0 = LOOKAHEAD * var.lookaheadMul
     local pA = at(d0)
     local pB = at(math.min(d0 + span0, TOTAL))
@@ -835,7 +835,6 @@ local function runLap(car, seat)
     end
     local function bodyDirOf(vd, slope) return (vd + Vector3.new(0, slope, 0)).Unit end
 
-    -- trang thai dong luc hoc
     local v, aLong, T, B = 0, 0, 0, 0
     do
         local rv = root.AssemblyLinearVelocity
@@ -848,17 +847,14 @@ local function runLap(car, seat)
     end
     local lastGear, shiftEnd = gearOf(v), 0
 
-    -- trang thai lai
-    local wS, rollF = 0, 0          -- toc do quay (loc) va goc nghieng
+    local wS, rollF = 0, 0
     local laneX, laneV, laneTarget, nextLane = 0, 0, 0, os.clock() + rnd(2, 5)
     local ph1, ph2 = math.random() * 6.28, math.random() * 6.28
 
-    -- su kien ngau nhien
     local ev
     local nextEv = os.clock() + rnd(8, 14)
     local evCount = 0
 
-    -- phim S / W
     local sOn, sUntil, sNext, pressCount = false, 0, 0, 0
     local function driveKeys(now)
         if USE_KEY_S then
@@ -921,7 +917,6 @@ local function runLap(car, seat)
             return false
         end
 
-        -- ---------- vi tri tren path ----------
         local realPos = root.Position
         local realD, distToPath = projectD(realPos, d)
         if distToPath <= MAX_PATH_DIST then
@@ -940,14 +935,12 @@ local function runLap(car, seat)
                 releaseV0, TOTAL - d, releaseDur))
         end
 
-        -- ---------- LAI: Stanley + feedforward do cong ----------
         local span  = LOOKAHEAD * var.lookaheadMul + v * 0.05
         local pAt   = at(d)
         local aheadP = at(math.min(d + span, TOTAL))
         local tNow, hmag = flatDir(pAt, aheadP, vdir)
         local rightNow = Vector3.new(-tNow.Z, 0, tNow.X)
 
-        -- lan (doi cham, em) + racing line => lech ngang muc tieu
         if now >= nextLane then
             if math.random() < 0.3 then
                 laneTarget = rnd(-1, 1)
@@ -961,15 +954,15 @@ local function runLap(car, seat)
         laneX = laneX + laneV * dt
 
         local kAbs     = gridAt(gAbsK, d + 20)
-        local laneGain = 1 - math.clamp(kAbs * 400, 0, 0.7)   -- cua gat thi bam sat path
+        local laneGain = 1 - math.clamp(kAbs * 400, 0, 0.7)
         local lat = laneX * laneGain + gridAt(gRace, d) * var.raceScale
         lat = math.clamp(lat, -LAT_TOTAL_MAX, LAT_TOTAL_MAX)
         lat = lat * math.clamp((LAT_FADE_DIST + 6 - distToPath) / 6, 0, 1)
 
         local off = Vector3.new(realPos.X - pAt.X, 0, realPos.Z - pAt.Z)
-        local e = off:Dot(rightNow) - lat                      -- + = xe ben phai duong muc tieu
+        local e = off:Dot(rightNow) - lat
         local corr = math.clamp(math.atan(STEER_KE * e / (v + STEER_KS)), -STEER_MAX_CORR, STEER_MAX_CORR)
-        if released then   -- sau vach dich: lech huong nhe ngau nhien (van bi keo ve gan duong)
+        if released then
             corr = corr + finishDrift * math.clamp((now - releaseT0) / 0.5, 0, 1)
         end
         local desired = rotY(tNow, corr)
@@ -985,7 +978,6 @@ local function runLap(car, seat)
         vdir = vdir.Magnitude > 0.01 and vdir.Unit or tNow
         wS = wS + (w - wS) * math.clamp(dt / 0.15, 0, 1)
 
-        -- ---------- DOC / PHANH ----------
         if released then
             local x = math.clamp((now - releaseT0) / releaseDur, 0, 1)
             if x >= 1 then
@@ -999,19 +991,17 @@ local function runLap(car, seat)
             end
             local xs = x ^ finishShape
             local vPrev = v
-            v = releaseV0 * (1 - (3 * xs * xs - 2 * xs * xs * xs))   -- S-curve, khong giat luc bat dau
+            v = releaseV0 * (1 - (3 * xs * xs - 2 * xs * xs * xs))
             aLong = (v - vPrev) / math.max(dt, 1e-3)
             T = 0
             B = math.clamp(-aLong / BRAKE_MAX, 0, 1)
         else
-            -- toc do muc tieu theo profile (nhin truoc 0.15s) + feedforward do doc
             local vtBase  = gridAt(prof, d + v * PREVIEW_TIME)
             local vtAhead = gridAt(prof, d + v * PREVIEW_TIME + 8)
             local slopeV  = (vtAhead - vtBase) / 8
             local speedMod = 1 + math.sin(now * var.slowFreq + var.slowPhase) * var.slowAmp
             local vt = vtBase * speedMod
 
-            -- su kien ngau nhien: nha ga (lom toc do muc tieu) hoac chap phanh S
             local evBrake = 0
             if ev then
                 if now >= ev.t1 then
@@ -1043,7 +1033,6 @@ local function runLap(car, seat)
             local vmax  = math.max(cruise * VMAX_MUL, 250)
             local aEng  = ACCEL_MAX * math.max(0.05, 1 - (v / vmax) ^ 2)
 
-            -- len so: mat luc ngan (chi khi dang ga manh)
             local g = gearOf(v)
             if g > lastGear and T > 0.3 then
                 shiftEnd = now + rnd(SHIFT_CUT_MIN, SHIFT_CUT_MAX)
@@ -1051,7 +1040,6 @@ local function runLap(car, seat)
             lastGear = g
             local shiftF = (now < shiftEnd) and SHIFT_CUT_FACTOR or 1
 
-            -- tai xe quyet dinh chan ga / chan phanh
             local Td, Bd = 0, 0
             if now - launchT0 >= reaction then
                 if aDes >= -coast then
@@ -1062,11 +1050,9 @@ local function runLap(car, seat)
             end
             if evBrake > 0 then Td = 0; Bd = math.max(Bd, evBrake) end
 
-            -- chan ga / phanh di chuyen em (khong nhay coc)
             T = T + math.clamp(Td - T, -THR_DN * dt, THR_UP * dt)
             B = B + math.clamp(Bd - B, -BRK_DN * dt, BRK_UP * dt)
 
-            -- gia toc rong, gioi han DO GIAT
             local aT = T * aEng * shiftF - coast - B * BRAKE_MAX
             local lim
             if aT > aLong then
@@ -1079,7 +1065,6 @@ local function runLap(car, seat)
             if v < 0 then v = 0; if aLong < 0 then aLong = 0 end end
             if v > MAX_SAFE_SPEED then v = MAX_SAFE_SPEED end
 
-            -- dong bo voi xe that (va cham, doc dung, thieu luc...)
             if now - launchT0 > 1.5 then
                 local rv = root.AssemblyLinearVelocity
                 local vReal = rv.X * vdir.X + rv.Z * vdir.Z
@@ -1091,7 +1076,6 @@ local function runLap(car, seat)
 
         if v > maxV then maxV = v end
 
-        -- ---------- lenh van toc ----------
         if hmag and hmag > 3 then
             slopeF = slopeF + ((aheadP.Y - pAt.Y) / hmag - slopeF) * math.clamp(dt / 0.25, 0, 1)
         end
@@ -1102,7 +1086,6 @@ local function runLap(car, seat)
             lv.VectorVelocity = vdir * v
         end
 
-        -- ---------- than xe: nghieng khi vao cua, chup/ngoi dau theo ga/phanh ----------
         local rollT = LEAN_FACTOR * math.atan(v * wS / 196.2)
         rollT = math.clamp(rollT, -math.rad(LEAN_MAX_DEG), math.rad(LEAN_MAX_DEG))
         rollF = rollF + (rollT - rollF) * math.clamp(dt / 0.12, 0, 1)
@@ -1225,7 +1208,6 @@ local function driveToRaid(seat)
         local rv = root.AssemblyLinearVelocity
         v = math.min(Vector3.new(rv.X, 0, rv.Z).Magnitude, 60)
     end
-    -- huong ban dau = huong xe dang quay (khong bi "bat" quay ngay)
     local vdir
     do
         local cf  = root.CFrame * CFrame.Angles(0, -math.rad(YAW), 0)
@@ -1249,13 +1231,11 @@ local function driveToRaid(seat)
         local to   = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
         local dist = to.Magnitude
 
-        -- toi noi (thay menu Quick hoac gan diem dich) -> tha ga, phanh em roi dung
         if not stopping and (getQuick() or dist <= arriveDist) then
             stopping, stopT0 = true, now
         end
         if stopping and (v < 3 or now - stopT0 > 5) then reached = true break end
 
-        -- ---------- lai: quay dau co gioi han toc do quay ----------
         local want = dist > 0.5 and (to / dist) or vdir
         local crossY = vdir.Z * want.X - vdir.X * want.Z
         local dotV   = vdir.X * want.X + vdir.Z * want.Z
@@ -1269,7 +1249,6 @@ local function driveToRaid(seat)
         vdir = vdir.Magnitude > 0.01 and vdir.Unit or want
         wS = wS + (w - wS) * math.clamp(dt / 0.15, 0, 1)
 
-        -- ---------- toc do muc tieu: cham lai khi can re gat / sap toi ----------
         local vt = 0
         if not stopping then
             local brakeV = math.sqrt(2 * RAID_DECEL * math.max(dist - arriveDist, 0)) + 6
@@ -1296,7 +1275,6 @@ local function driveToRaid(seat)
 
         lv.VectorVelocity = vdir * v
 
-        -- ---------- than xe ----------
         local rollT = math.clamp(LEAN_FACTOR * math.atan(v * wS / 196.2),
             -math.rad(LEAN_MAX_DEG), math.rad(LEAN_MAX_DEG))
         rollF = rollF + (rollT - rollF) * math.clamp(dt / 0.12, 0, 1)
@@ -1305,7 +1283,6 @@ local function driveToRaid(seat)
             * CFrame.Angles(pitchA * CAR_FORWARD_SIGN, 0, rollF * CAR_FORWARD_SIGN)
             * CFrame.Angles(0, math.rad(YAW), 0)
 
-        -- ---------- phim S nhap khi phanh ----------
         if USE_KEY_S then
             local Bk = math.clamp(-aLong / BRAKE_MAX, 0, 1)
             if sOn then
@@ -1337,8 +1314,66 @@ local function driveToRaid(seat)
     return reached
 end
 
+-- =====================================================================
+--  ON DINH KHI CHAY LAU
+-- =====================================================================
+
+-- xe da vao duong dua chua (gan path)
+local function nearPath(seat)
+    local root = seat and seat.Parent and (seat.AssemblyRootPart or seat)
+    if not root then return false end
+    local _, dist = nearestD(root.Position)
+    return dist <= MAX_PATH_DIST
+end
+
+-- Bam Solo, xac nhan xe da vao duong dua, chua vao thi bam lai
+local function startSoloRace(seat)
+    for attempt = 1, SOLO_RETRIES do
+        if not running then return false end
+        local q = getQuick() or waitFor(getQuick, 8)
+        if not q then
+            if nearPath(seat) then return true end
+            print("   ⚠️ Không thấy menu Solo và chưa vào đua")
+        else
+            if attempt > 1 then print("   🔁 Bấm Solo lần " .. attempt) end
+            status("Bam Solo (" .. attempt .. "/" .. SOLO_RETRIES .. ")")
+            task.wait(rnd(0.5, 1.2))
+            click(q)
+            local t = os.clock()
+            while running and os.clock() - t < SOLO_CONFIRM_TIME do
+                task.wait(0.5)
+                if nearPath(seat) then
+                    while running and os.clock() - t < WAIT_AFTER_SOLO do
+                        status(string.format("Cho bat dau: %ds", math.ceil(WAIT_AFTER_SOLO - (os.clock() - t))))
+                        task.wait(0.5)
+                    end
+                    return running
+                end
+            end
+            print("   ⚠️ Đã bấm Solo nhưng chưa vào đua → thử lại")
+        end
+    end
+    return false
+end
+
+-- don dep sau loi bat ngo: nha phim, go constraint con sot tren xe
+local function cleanupStray()
+    releaseKeys()
+    pcall(function()
+        local _, seat = findCar()
+        local root = seat and (seat.AssemblyRootPart or seat)
+        if root then
+            for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                local o = root:FindFirstChild(n)
+                if o then pcall(function() o:Destroy() end) end
+            end
+        end
+    end)
+end
+
 local function mainLoop()
     local stopReason
+    local farStreak = 0
     while running do
         local car, seat
 
@@ -1391,15 +1426,12 @@ local function mainLoop()
         end
 
         status("Cho menu raid...")
-        local q = waitFor(getQuick, 20)
-        if not q then status("Menu khong hien, lam lai") task.wait(2) continue end
-        task.wait(rnd(0.5, 1.2))
-        click(q)
-
-        for i = WAIT_AFTER_SOLO, 1, -1 do
+        if not waitFor(getQuick, 20) then status("Menu khong hien, lam lai") task.wait(2) continue end
+        if not startSoloRace(seat) then
             if not running then break end
-            status("Cho bat dau: " .. i .. "s")
-            task.wait(1)
+            status("Bam Solo khong vao duoc dua, lam lai")
+            task.wait(2)
+            continue
         end
         if not running then break end
 
@@ -1411,10 +1443,17 @@ local function mainLoop()
         status("Dang dua...")
         local ok, why = runLap(car, seat)
         if why == "far_from_path" then
-            stopReason = "Xe qua xa path, da dung"
-            running = false
-            break
+            farStreak += 1
+            if farStreak >= 3 then
+                stopReason = "Xe qua xa path 3 lan lien tiep, da dung"
+                running = false
+                break
+            end
+            status("Xe cach path, lam lai (" .. farStreak .. "/3)")
+            task.wait(2)
+            continue
         end
+        farStreak = 0
         status(ok and "Xong vong, cho Close..." or "Loi giua duong, lam lai")
 
         local c = waitFor(getClose, 20)
@@ -1433,11 +1472,27 @@ local function mainLoop()
     status(stopReason or "Da dung")
 end
 
+-- giam sat: neu mainLoop gap loi Lua bat ngo thi don dep va tu chay lai
+local function supervisor()
+    while running do
+        local ok, err = pcall(mainLoop)
+        if not ok then
+            warn("[v8] Loi trong vong lap chinh: " .. tostring(err))
+            print("   ♻️ Lỗi bất ngờ → dọn dẹp và chạy lại sau 3s")
+            status("Loi, tu chay lai...")
+            cleanupStray()
+            task.wait(3)
+        end
+    end
+    running = false
+    releaseKeys()
+end
+
 btnStart.MouseButton1Click:Connect(function()
     if running then return end
     if #pts < 2 then status("Chua doc duoc path") return end
     running = true
-    task.spawn(mainLoop)
+    task.spawn(supervisor)
 end)
 
 btnStop.MouseButton1Click:Connect(function()
@@ -1447,26 +1502,11 @@ btnStop.MouseButton1Click:Connect(function()
         status("Dang dung...")
         task.spawn(function()
             task.wait(3)
-            local _, seat = findCar()
-            local root = seat and (seat.AssemblyRootPart or seat)
-            if root then
-                for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
-                    local o = root:FindFirstChild(n)
-                    if o then pcall(function() o:Destroy() end) end
-                end
-            end
-            releaseKeys()
+            cleanupStray()
             status("Da dung")
         end)
     else
-        local _, seat = findCar()
-        local root = seat and (seat.AssemblyRootPart or seat)
-        if root then
-            for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
-                local o = root:FindFirstChild(n)
-                if o then pcall(function() o:Destroy() end) end
-            end
-        end
+        cleanupStray()
         status("Da dung")
     end
 end)
