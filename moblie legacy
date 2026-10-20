@@ -1,0 +1,1434 @@
+local Players    = game:GetService("Players")
+local RS         = game:GetService("RunService")
+local VIM        = game:GetService("VirtualInputManager")
+local lp         = Players.LocalPlayer
+local pg         = lp:WaitForChild("PlayerGui")
+
+local FILE       = "race_path.lua"
+local SPEED      = 210
+local MAX_SAFE_SPEED = 350
+
+local SPEED_RANDOM   = true
+local RAND_MIN       = 180
+local RAND_MAX       = 250
+local RAND_STEP      = 10
+local RAND_MIN_DIFF  = 20
+
+-- =====================================================================
+--  MO HINH XE (gia toc / phanh / do giat)   [stud/s, stud/s^2, stud/s^3]
+-- =====================================================================
+local ACCEL_MAX      = 40      
+local BRAKE_MAX      = 70      
+local COAST_BASE     = 4       
+local COAST_QUAD     = 0.00015 
+local VMAX_MUL       = 2.0     
+local JERK_UP        = 70      
+local JERK_DOWN      = 150     
+local JERK_BRAKE     = 180     
+local THR_UP, THR_DN = 2.5, 3.0  
+local BRK_UP, BRK_DN = 5.0, 6.0  
+local SPEED_KP       = 1.2     
+local PREVIEW_TIME   = 0.15    
+local REACTION_MIN, REACTION_MAX = 0.15, 0.45  
+local GEAR_SHIFTS    = {45, 80, 115, 150, 185, 220} 
+local SHIFT_CUT_MIN, SHIFT_CUT_MAX = 0.10, 0.18      
+local SHIFT_CUT_FACTOR = 0.2   
+local SYNC_DEAD      = 30      
+local SYNC_RATE      = 1.5
+local FORCE_PER_MASS = 120     
+
+-- =====================================================================
+--  TOC DO THEO DUONG DUA (cua cong / nguoi that)
+-- =====================================================================
+local A_LAT_MAX            = 170   
+local DECEL_PLAN           = 35    
+local PROFILE_DS           = 4     
+local CURV_HALF_WIN        = 6     
+local USE_RECORDED_PROFILE = true  
+local PROFILE_STRENGTH     = 0.35  
+local PROFILE_SMOOTH       = 100   
+local PROFILE_FLOOR        = 0.5
+
+-- =====================================================================
+--  SU KIEN NGAU NHIEN (nha ga / chap phanh)
+-- =====================================================================
+local EVENTS_ENABLED = true
+local EVENT_GAP_MIN, EVENT_GAP_MAX = 6, 14
+local LIFT_CHANCE    = 0.6                
+local LIFT_DEPTH_MIN, LIFT_DEPTH_MAX = 0.04, 0.10   
+local LIFT_DUR_MIN, LIFT_DUR_MAX     = 1.0, 2.2
+local TAP_LEVEL_MIN, TAP_LEVEL_MAX   = 0.30, 0.45   
+local TAP_DUR_MIN, TAP_DUR_MAX       = 0.15, 0.30
+
+-- =====================================================================
+--  PHIM BAM THAT
+-- =====================================================================
+local USE_KEY_S = true     
+local USE_KEY_W = false    
+local BRAKE_KEY_THRESHOLD = 0.25
+local BRAKE_KEY_MIN_SPEED = 25
+
+-- =====================================================================
+--  DANH LAI / DUONG DI KHAC NHAU MOI VONG
+-- =====================================================================
+local HUMAN_VARIATION = true
+local LOOKAHEAD_MUL_MIN, LOOKAHEAD_MUL_MAX = 0.95, 1.05
+local YAW_NOISE_AMP_MIN, YAW_NOISE_AMP_MAX = 0.5, 1.5   
+local SLOW_AMP_MIN, SLOW_AMP_MAX   = 0.01, 0.03
+local SLOW_FREQ_MIN, SLOW_FREQ_MAX = 0.15, 0.4
+
+local LANE_MAX        = 3.5    
+local LANE_CHANGE_MIN, LANE_CHANGE_MAX = 4, 9  
+local LANE_OMEGA      = 1.5    
+local LANE_MAX_VEL    = 3      
+local RACELINE_AMP    = 1.5    
+local RACELINE_K      = 250    
+local LAT_TOTAL_MAX   = 5      
+local LAT_FADE_DIST   = 12
+
+-- Lai (Stanley + feedforward do cong)
+local STEER_KE        = 3.0
+local STEER_KS        = 10
+local HEADING_GAIN    = 8
+local STEER_MAX_CORR  = math.rad(25)
+local STEER_LAT_MUL   = 1.5    
+
+-- Than xe
+local LEAN_FACTOR     = 0.5    
+local LEAN_MAX_DEG    = 22
+local PITCH_PER_ACCEL = 0.05   
+local PITCH_MAX_DEG   = 3
+
+local YAW        = 0
+local LOOKAHEAD  = 10
+local RAID_POS   = Vector3.new(13310.759765625, 75.13611602783203, -3627.98876953125)
+local VEHICLE_NAME = ""
+local WAIT_AFTER_SOLO  = 6
+local WAIT_AFTER_SPAWN = 2
+
+local MAX_FORCE = 5e4
+
+local RAID_TELEPORT_NAME = "GP_Track_Race"
+local WAIT_AFTER_TELEPORT = 7
+local RAID_SPEED_MIN, RAID_SPEED_MAX = 60, 61  
+local RAID_ACCEL        = 25    
+local RAID_DECEL        = 100    
+local RAID_HEADING_GAIN = 3.0   
+local RAID_MIN_RADIUS   = 25    
+local RAID_WOBBLE       = 0.03  
+local RAID_GOAL_JITTER  = 4     
+local RAID_ARRIVE_DIST    = 30
+local RAID_DRIVE_TIMEOUT  = 90
+
+local CLOSE_DELAY_MIN, CLOSE_DELAY_MAX = 0.2, 0.4
+local AFTER_CLOSE_WAIT = 0.3
+
+local CAR_FORWARD_SIGN = 1
+local Y_FORCE_FULL     = false
+local AO_RESPONSIVE    = 200
+local WARMUP_TIME      = 1.0
+local PROJECT_WINDOW   = 40
+local MAX_PATH_DIST    = 80
+
+local STOP_TIME_FINISH = 1.5
+local STOP_TIME_RAID   = 0.8
+local STOP_TIME_STOP   = 1.0
+
+local RELEASE_MIN_DIST   = 30
+local RELEASE_TIME_AHEAD = 0.15
+local FINISH_OVERSHOOT_MIN = 70    
+local FINISH_OVERSHOOT_MAX = 130
+local FINISH_DRIFT         = 0.05  
+local FINISH_DUR_MIN     = 1.0
+local FINISH_DUR_MAX     = 3.0
+
+-- =====================================================================
+--  DOC PATH
+-- =====================================================================
+local PATH, PATH_SRC
+pcall(function()
+    PATH_SRC = readfile(FILE)
+    PATH = loadstring(PATH_SRC .. "\nreturn PATH")()
+end)
+local pts, cum = {}, {0}
+if type(PATH) == "table" and #PATH > 1 then
+    for i, p in ipairs(PATH) do pts[i] = Vector3.new(p[1], p[2], p[3]) end
+    for i = 2, #pts do cum[i] = cum[i-1] + (pts[i] - pts[i-1]).Magnitude end
+end
+local TOTAL = cum[#pts] or 0
+
+local REC_DT
+do
+    local avg = PATH_SRC and tonumber(PATH_SRC:match("trung binh%s+([%d%.]+)%s+stud/s"))
+    if avg and avg > 10 and #pts > 2 and TOTAL > 0 then
+        REC_DT = TOTAL / avg / (#pts - 1)
+    end
+end
+
+local function at(d)
+    d = math.clamp(d, 0, TOTAL)
+    local lo, hi = 1, #pts
+    while hi - lo > 1 do
+        local mid = (lo + hi) // 2
+        if cum[mid] <= d then lo = mid else hi = mid end
+    end
+    local seg = cum[hi] - cum[lo]
+    local a = seg > 0 and (d - cum[lo]) / seg or 0
+    return pts[lo]:Lerp(pts[hi], a)
+end
+
+local function projectD(realPos, dHint)
+    local rx, rz = realPos.X, realPos.Z
+    local lo = math.max(0, dHint - PROJECT_WINDOW)
+    local hi = math.min(TOTAL, dHint + PROJECT_WINDOW)
+    if hi <= lo then return dHint, math.huge end
+    local step = (hi - lo) / 40
+    local bestD, bestSq = dHint, math.huge
+    local dd = lo
+    while dd <= hi do
+        local p = at(dd)
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestD = dd end
+        dd = dd + step
+    end
+    local rlo = math.max(lo, bestD - step)
+    local rhi = math.min(hi, bestD + step)
+    local fine = step / 8
+    dd = rlo
+    while dd <= rhi do
+        local p = at(dd)
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestD = dd end
+        dd = dd + fine
+    end
+    return bestD, math.sqrt(bestSq)
+end
+
+local function nearestD(realPos)
+    local rx, rz = realPos.X, realPos.Z
+    local bestI, bestSq = 1, math.huge
+    for i, p in ipairs(pts) do
+        local dx, dz = p.X - rx, p.Z - rz
+        local s = dx*dx + dz*dz
+        if s < bestSq then bestSq = s; bestI = i end
+    end
+    return projectD(realPos, cum[bestI])
+end
+
+local function flatDir(a, b, fallback)
+    local x, z = b.X - a.X, b.Z - a.Z
+    local m = math.sqrt(x*x + z*z)
+    if m > 0.01 then return Vector3.new(x / m, 0, z / m), m end
+    return fallback, m
+end
+
+local function rotY(vec, a)
+    local c, s = math.cos(a), math.sin(a)
+    return Vector3.new(vec.X * c + vec.Z * s, 0, -vec.X * s + vec.Z * c)
+end
+
+local function smoothArray(src, half)
+    local n = #src
+    local pre = {0}
+    for i = 1, n do pre[i + 1] = pre[i] + src[i] end
+    local out = {}
+    for i = 1, n do
+        local a, b = math.max(1, i - half), math.min(n, i + half)
+        out[i] = (pre[b + 1] - pre[a]) / (b - a + 1)
+    end
+    return out
+end
+
+-- =====================================================================
+--  LUOI DO CONG / VAN TOC NGUOI THAT / DUONG DUA (tinh 1 lan luc load)
+-- =====================================================================
+local DS = PROFILE_DS
+local G = 0
+local gKL, gAbsK, gHumM, gRace = {}, {}, {}, {}
+local minRadius = math.huge
+
+local function buildGrid()
+    if #pts < 2 or TOTAL <= DS * 4 then return end
+    G = math.floor(TOTAL / DS) + 1
+    local pos = {}
+    for i = 1, G do pos[i] = at((i - 1) * DS) end
+
+    local W = CURV_HALF_WIN
+    for i = 1, G do
+        gKL[i] = 0
+        local a, b = i - W, i + W
+        if a >= 1 and b <= G then
+            local t1 = flatDir(pos[a], pos[i], nil)
+            local t2 = flatDir(pos[i], pos[b], nil)
+            if t1 and t2 then
+                local cr  = t1.Z * t2.X - t1.X * t2.Z
+                local dot = t1.X * t2.X + t1.Z * t2.Z
+                gKL[i] = 2 * math.atan2(cr, dot) / ((b - a) * DS)
+            end
+        end
+        gAbsK[i] = math.abs(gKL[i])
+        if gAbsK[i] > 1e-5 then minRadius = math.min(minRadius, 1 / gAbsK[i]) end
+    end
+
+    if REC_DT and USE_RECORDED_PROFILE then
+        local cc = {0}
+        for i = 2, #pts do cc[i] = cc[i-1] + math.min(cum[i] - cum[i-1], 7.5) end
+        local function idxOf(d)
+            local lo, hi = 1, #pts
+            while hi - lo > 1 do
+                local mid = (lo + hi) // 2
+                if cum[mid] <= d then lo = mid else hi = mid end
+            end
+            return lo
+        end
+        local hum = {}
+        for i = 1, G do
+            local d = (i - 1) * DS
+            local a = idxOf(math.max(0, d - PROFILE_SMOOTH))
+            local b = idxOf(math.min(TOTAL, d + PROFILE_SMOOTH))
+            if b <= a then b = math.min(a + 1, #pts) end
+            hum[i] = (cc[b] - cc[a]) / (math.max(b - a, 1) * REC_DT)
+        end
+        local sorted = {}
+        for i = 1, G do sorted[i] = hum[i] end
+        table.sort(sorted)
+        local top = math.max(sorted[math.max(1, math.floor(G * 0.95))], 1)
+        for i = 1, G do gHumM[i] = math.clamp(hum[i] / top, PROFILE_FLOOR, 1) end
+    else
+        for i = 1, G do gHumM[i] = 1 end
+    end
+
+    local raw = {}
+    for i = 1, G do raw[i] = math.clamp(-gKL[i] * RACELINE_K, -1, 1) end
+    local sm = smoothArray(raw, 12)
+    for i = 1, G do gRace[i] = sm[i] * RACELINE_AMP end
+end
+buildGrid()
+
+local function gridAt(arr, d)
+    if G < 2 then return 0 end
+    local x = math.clamp(d / DS, 0, G - 1.0001)
+    local i = math.floor(x)
+    local f = x - i
+    return arr[i + 1] * (1 - f) + arr[i + 2] * f
+end
+
+local function buildLapProfile(cruise, alatMul, decelMul)
+    local prof = {}
+    local alat = A_LAT_MAX * alatMul
+    for i = 1, G do
+        local k  = math.max(gAbsK[i], 1e-6)
+        local vc = math.sqrt(alat / k)
+        local m  = 1 - PROFILE_STRENGTH * (1 - gHumM[i])
+        prof[i]  = math.max(40, math.min(cruise * m, vc, MAX_SAFE_SPEED))
+    end
+    local dec = DECEL_PLAN * decelMul
+    for i = G - 1, 1, -1 do
+        local lim = math.sqrt(prof[i + 1] * prof[i + 1] + 2 * dec * DS)
+        if prof[i] > lim then prof[i] = lim end
+    end
+    return prof
+end
+
+local function P(root, ...)
+    for _, n in ipairs({...}) do
+        if not root then return nil end
+        root = root:FindFirstChild(n)
+    end
+    return root
+end
+
+local function shown(g)
+    local o = g
+    while o and o ~= pg do
+        if o:IsA("GuiObject") and not o.Visible then return false end
+        if o:IsA("ScreenGui") and not o.Enabled then return false end
+        o = o.Parent
+    end
+    return true
+end
+
+-- HÀM CLICK ĐÃ ĐƯỢC SỬA ĐỂ TƯƠNG THÍCH 100% VỚI ARCEUS VÀ EXCEL
+local function click(obj)
+    if not obj then return false end
+    local btn = obj:IsA("GuiButton") and obj or obj:FindFirstChildWhichIsA("GuiButton", true)
+    
+    if btn then
+        if getconnections then
+            for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+                local conns = getconnections(btn[ev])
+                if conns then
+                    for _, c in ipairs(conns) do
+                        pcall(function() c:Fire() end)
+                    end
+                end
+            end
+        end
+        
+        if firesignal then
+            for _, ev in ipairs({"MouseButton1Click", "Activated"}) do
+                pcall(function() firesignal(btn[ev]) end)
+            end
+        end
+        
+        pcall(function() btn:Activate() end)
+    end
+    return true
+end
+
+local function rnd(a, b) return a + math.random() * (b - a) end
+
+local keyState = {}
+local function setKey(code, down)
+    if keyState[code] == down then return end
+    keyState[code] = down
+    pcall(function() VIM:SendKeyEvent(down, code, false, game) end)
+end
+local function releaseKeys()
+    for code, down in pairs(keyState) do
+        if down then
+            pcall(function() VIM:SendKeyEvent(false, code, false, game) end)
+        end
+        keyState[code] = false
+    end
+end
+
+local lastLapSpeed
+local function pickLapSpeed()
+    local c = {}
+    for v = RAND_MIN, RAND_MAX, RAND_STEP do
+        if not lastLapSpeed or math.abs(v - lastLapSpeed) >= RAND_MIN_DIFF then
+            c[#c + 1] = v
+        end
+    end
+    if #c == 0 then return RAND_MIN end
+    lastLapSpeed = c[math.random(#c)]
+    return lastLapSpeed
+end
+
+local DEFAULT_VAR = {
+    lookaheadMul = 1, yawNoiseAmp = 0.5,
+    slowAmp = 0, slowFreq = 0.2, slowPhase = 0,
+    laneMax = 0, raceScale = 0, decelMul = 1, alatMul = 1,
+}
+local function pickLapVariation()
+    if not HUMAN_VARIATION then return DEFAULT_VAR end
+    return {
+        lookaheadMul = rnd(LOOKAHEAD_MUL_MIN, LOOKAHEAD_MUL_MAX),
+        yawNoiseAmp  = rnd(YAW_NOISE_AMP_MIN, YAW_NOISE_AMP_MAX),
+        slowAmp      = rnd(SLOW_AMP_MIN, SLOW_AMP_MAX),
+        slowFreq     = rnd(SLOW_FREQ_MIN, SLOW_FREQ_MAX),
+        slowPhase    = math.random() * math.pi * 2,
+        laneMax      = LANE_MAX * rnd(0.6, 1.0),
+        raceScale    = rnd(0.5, 1.2),
+        decelMul     = rnd(0.85, 1.15),   
+        alatMul      = rnd(0.92, 1.05),   
+    }
+end
+
+local function smoothStop(lv, root, duration)
+    if not (lv and lv.Parent and root and root.Parent) then
+        if lv and lv.Parent then lv.VectorVelocity = Vector3.zero end
+        return
+    end
+    local v0  = lv.VectorVelocity
+    local mag = v0.Magnitude
+    if mag < 5 then
+        lv.VectorVelocity = Vector3.zero
+        return
+    end
+    duration = duration or STOP_TIME_FINISH
+    local dir = v0.Unit
+    local t0  = os.clock()
+    while os.clock() - t0 < duration do
+        if not lv.Parent or not root.Parent then return end
+        local a = 1 - (os.clock() - t0) / duration
+        a = math.clamp(a, 0, 1) * math.clamp(a, 0, 1)
+        lv.VectorVelocity = dir * (mag * a)
+        RS.Heartbeat:Wait()
+    end
+    if lv.Parent then lv.VectorVelocity = Vector3.zero end
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "RacePlayback", false, 999
+if not pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) or not gui.Parent then
+    gui.Parent = pg
+end
+
+local panel = Instance.new("Frame", gui)
+panel.Size = UDim2.new(0, 240, 0, 304)
+panel.Position = UDim2.new(1, -250, 0.3, 0)
+panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+panel.BackgroundTransparency = 0.15
+panel.BorderSizePixel = 0
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+local function label(y, text)
+    local l = Instance.new("TextLabel", panel)
+    l.Size = UDim2.new(1, -16, 0, 20)
+    l.Position = UDim2.new(0, 8, 0, y)
+    l.BackgroundTransparency = 1
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Font = Enum.Font.GothamMedium
+    l.TextSize = 13
+    l.TextColor3 = Color3.new(1, 1, 1)
+    l.Text = text
+    return l
+end
+
+local function button(y, text, color)
+    local b = Instance.new("TextButton", panel)
+    b.Size = UDim2.new(1, -16, 0, 32)
+    b.Position = UDim2.new(0, 8, 0, y)
+    b.BackgroundColor3 = color
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Text = text
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+
+label(4, "TU DONG DUA RAID v8.0").Font = Enum.Font.GothamBold
+local lbStatus = label(28, "")
+local lbProg   = label(48, "Tien do: 0%")
+local lbTime   = label(68, "Thoi gian: 0.0s")
+local lbSpeed  = label(88, "")
+local lbYaw    = label(108, "")
+local lbCycle  = label(128, "So vong da xong: 0")
+
+local tbSpeed = Instance.new("TextBox", panel)
+tbSpeed.Size = UDim2.new(1, -16, 0, 32)
+tbSpeed.Position = UDim2.new(0, 8, 0, 154)
+tbSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+tbSpeed.BorderSizePixel = 0
+tbSpeed.Font = Enum.Font.GothamBold
+tbSpeed.TextSize = 13
+tbSpeed.TextColor3 = Color3.new(1, 1, 1)
+tbSpeed.PlaceholderText = "Nhap toc do roi Enter"
+tbSpeed.ClearTextOnFocus = false
+tbSpeed.Text = tostring(SPEED)
+Instance.new("UICorner", tbSpeed).CornerRadius = UDim.new(0, 6)
+
+local btnStart = button(192, "START", Color3.fromRGB(40, 150, 70))
+local btnStop  = button(230, "STOP", Color3.fromRGB(170, 60, 60))
+local btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
+
+local function status(t) lbStatus.Text = t end
+local function refresh()
+    if SPEED_RANDOM then
+        lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX)
+    else
+        lbSpeed.Text = "Toc do cai: " .. SPEED
+    end
+    lbYaw.Text   = "Xoay xe: " .. YAW .. " do"
+    tbSpeed.Text = tostring(SPEED)
+end
+refresh()
+
+tbSpeed.FocusLost:Connect(function()
+    local n = tonumber(tbSpeed.Text)
+    if n then SPEED = math.clamp(n, 20, MAX_SAFE_SPEED) end
+    refresh()
+end)
+
+status(#pts >= 2 and (#pts .. " diem, " .. math.floor(TOTAL) .. " stud") or ("Khong doc duoc " .. FILE))
+if G > 0 then
+    print(string.format("[v8] luoi=%d | cua gat nhat R~%.0f stud | van toc ghi am: %s",
+        G, minRadius == math.huge and 0 or minRadius,
+        REC_DT and string.format("dt=%.4fs", REC_DT) or "khong co (bo qua)"))
+end
+
+local running = false
+
+local function findCar()
+    local vf = workspace:FindFirstChild("Vehicles")
+    if not vf then return nil end
+    local f = vf:FindFirstChild(lp.Name)
+    if not f then
+        for _, c in ipairs(vf:GetChildren()) do
+            if c.Name:lower():find(lp.Name:lower()) then f = c; break end
+        end
+    end
+    if not f then return nil end
+    local m = f:FindFirstChildOfClass("Model")
+    if not m then
+        for _, c in ipairs(f:GetChildren()) do
+            if c:IsA("Model") then m = c; break end
+        end
+    end
+    if not m then return nil end
+    local s = m:FindFirstChild("DriveSeat", true)
+        or m:FindFirstChildWhichIsA("VehicleSeat", true)
+        or m:FindFirstChildWhichIsA("Seat", true)
+    if s then return m, s end
+end
+
+local function isSeatedIn(car)
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    local sp = hum and hum.SeatPart
+    return sp ~= nil and car ~= nil and sp:IsDescendantOf(car)
+end
+
+local function waitFor(fn, timeout)
+    local t = os.clock()
+    while running and os.clock() - t < timeout do
+        local r = fn()
+        if r then return r end
+        task.wait(0.25)
+    end
+end
+
+local function isVehicleMenuOpen()
+    local selV = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle")
+    return selV and shown(selV)
+end
+
+local function spawnCar()
+    if not isVehicleMenuOpen() then
+        status("Mo menu xe...")
+        local menuVehicle = P(pg, "MainUI", "MainFrame", "Menu", "Vehicle")
+        if menuVehicle then
+            click(menuVehicle)
+            local t = os.clock()
+            while os.clock() - t < 5 do
+                if isVehicleMenuOpen() then break end
+                task.wait(0.25)
+            end
+            task.wait(0.5)
+        else
+            print("   ⚠️ Không tìm thấy Menu.Vehicle")
+            return nil
+        end
+    end
+
+    if VEHICLE_NAME ~= "" then
+        local list = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle", "ListPane", "VehicleList")
+        if list then
+            local veh = list:FindFirstChild(VEHICLE_NAME)
+            if veh then
+                print("   🚗 Chọn xe:", VEHICLE_NAME)
+                click(veh)
+                task.wait(0.8)
+            end
+        end
+    end
+
+    status("Click Spawn...")
+    task.wait(0.3)
+
+    local spawnBtn = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle", "Hero", "Acts", "Spawn")
+    if not spawnBtn then
+        local selV = P(pg, "MainUI", "MainFrame", "Selected", "Vehicle")
+        if selV then
+            for _, v in ipairs(selV:GetDescendants()) do
+                if v:IsA("GuiButton") and v.Visible and v.AbsoluteSize.X > 20 then
+                    local n = v.Name:lower()
+                    local t = (v:IsA("TextButton") and v.Text or ""):lower()
+                    if n:find("spawn") or t:find("spawn") then
+                        spawnBtn = v
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not spawnBtn then
+        print("   ❌ Không tìm thấy nút Spawn")
+        return nil
+    end
+
+    click(spawnBtn)
+    status("Cho xe spawn...")
+    task.wait(2)
+
+    return waitFor(function()
+        local c, s = findCar()
+        if c then
+            print("   ✅ Xe đã spawn:", c:GetFullName())
+            return {c, s}
+        end
+    end, 20)
+end
+
+local function sit(seat)
+    local ch  = lp.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if not (hum and hrp) then return false end
+
+    local car = seat:FindFirstAncestorOfClass("Model")
+    local prompt
+    if car then
+        for _, v in ipairs(car:GetDescendants()) do
+            if v:IsA("ProximityPrompt") and v.Enabled then
+                prompt = v
+                break
+            end
+        end
+    end
+    if not prompt then
+        prompt = seat:FindFirstChildWhichIsA("ProximityPrompt", true)
+    end
+
+    if not prompt then
+        print("   ⚠️ Không có ProximityPrompt → fallback sit")
+        pcall(function() seat:Sit(hum) end)
+        task.wait(1.5)
+        return hum.SeatPart ~= nil
+    end
+
+    local holdDur = prompt.HoldDuration or 0
+    print(string.format("   🪑 Prompt: %s | Hold: %.2fs", prompt:GetFullName(), holdDur))
+
+    for attempt = 1, 6 do
+        if hum.SeatPart then
+            print("   ✅ Đã ngồi (SeatPart = " .. hum.SeatPart.Name .. ")")
+            return true
+        end
+
+        local carCF = car and car:GetPivot() or seat.CFrame
+        local sideOffset = carCF:VectorToWorldSpace(Vector3.new(4, 0, 0))
+        local standPos = CFrame.new(seat.Position + sideOffset + Vector3.new(0, 2, 0))
+
+        hrp.CFrame = standPos
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+        task.wait(0.6)
+
+        if fireproximityprompt then
+            pcall(function() fireproximityprompt(prompt) end)
+            task.wait(math.max(holdDur, 0.3) + 0.5)
+        end
+
+        if not hum.SeatPart then
+            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(math.max(holdDur, 0.5) + 0.3)
+            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            task.wait(0.5)
+        end
+
+        print(string.format("   🔄 Lần %d | Seated: %s", attempt, tostring(hum.SeatPart ~= nil)))
+    end
+
+    return hum.SeatPart ~= nil
+end
+
+local function setupRaceConstraints(root)
+    for _, n in ipairs({"RaceAttachment", "RaceLinearVelocity", "RaceAlignOrientation"}) do
+        local old = root:FindFirstChild(n)
+        if old then old:Destroy() end
+    end
+
+    local force = MAX_FORCE
+    if FORCE_PER_MASS > 0 then
+        local okM, mass = pcall(function() return root.AssemblyMass end)
+        if okM and type(mass) == "number" then force = math.max(force, mass * FORCE_PER_MASS) end
+    end
+
+    local att = Instance.new("Attachment")
+    att.Name = "RaceAttachment"
+    att.Parent = root
+
+    local lv = Instance.new("LinearVelocity")
+    lv.Name = "RaceLinearVelocity"
+    lv.Attachment0 = att
+    lv.MaxForce = force
+    lv.VectorVelocity = Vector3.zero
+    lv.RelativeTo = Enum.ActuatorRelativeTo.World
+    pcall(function()
+        lv.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+        lv.MaxAxesForce = Y_FORCE_FULL
+            and Vector3.new(force, force, force)
+            or  Vector3.new(force, 0, force)
+    end)
+    lv.Parent = root
+
+    local ao = Instance.new("AlignOrientation")
+    ao.Name = "RaceAlignOrientation"
+    ao.Attachment0 = att
+    ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    ao.MaxTorque = MAX_FORCE
+    ao.Responsiveness = math.clamp(AO_RESPONSIVE, 1, 200)
+    ao.RigidityEnabled = false
+    ao.Parent = root
+
+    return lv, ao, att
+end
+
+local function cleanupRace(lv, ao, att)
+    releaseKeys()
+    if lv  then pcall(function() lv:Destroy()  end) end
+    if ao  then pcall(function() ao:Destroy()  end) end
+    if att then pcall(function() att:Destroy() end) end
+end
+
+-- =====================================================================
+--  VONG DUA
+-- =====================================================================
+local function runLap(car, seat)
+    local root = seat.AssemblyRootPart or seat
+    local hum  = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    if not (car and car.Parent and seat.Parent and root) then return false end
+    if G < 2 then print("   ❌ Chưa dựng được lưới tốc độ từ path") return false end
+
+    local var    = pickLapVariation()
+    local cruise = math.min(SPEED, MAX_SAFE_SPEED)
+    local prof   = buildLapProfile(cruise, var.alatMul, var.decelMul)
+
+    print(string.format("   🧬 Variation: lane±%.1f | race×%.2f | LA×%.2f | decel×%.2f | alat×%.2f | slow±%.0f%%",
+        var.laneMax, var.raceScale, var.lookaheadMul, var.decelMul, var.alatMul, var.slowAmp * 100))
+
+    local d0, dist0 = nearestD(root.Position)
+    if dist0 > MAX_PATH_DIST then
+        print(string.format("   ❌ Xe cách path %.0f stud (> %d) → không chạy", dist0, MAX_PATH_DIST))
+        return false, "far_from_path"
+    end
+    print(string.format("   📍 Bắt đầu từ d=%.0f/%.0f, lệch %.1f stud", d0, TOTAL, dist0))
+
+    local t0 = os.clock()
+    local d  = d0
+    local maxT = (TOTAL - d0) / math.max(cruise * 0.6, 20) * 1.4 + 20
+
+    local releaseDist = math.max(RELEASE_MIN_DIST, cruise * RELEASE_TIME_AHEAD) * rnd(0.85, 1.5)
+    local finishOS    = rnd(FINISH_OVERSHOOT_MIN, FINISH_OVERSHOOT_MAX)
+    local finishDrift = rnd(-FINISH_DRIFT, FINISH_DRIFT)
+    local finishShape = rnd(0.85, 1.15)
+    local released, releaseT0, releaseV0, releaseDur = false, 0, 0, 0
+
+    local span0 = LOOKAHEAD * var.lookaheadMul
+    local pA = at(d0)
+    local pB = at(math.min(d0 + span0, TOTAL))
+    local vdir, hm0 = flatDir(pA, pB, nil)
+    if not vdir then
+        local lvv = root.CFrame.LookVector
+        vdir = flatDir(Vector3.zero, Vector3.new(lvv.X, 0, lvv.Z), Vector3.new(0, 0, -1))
+    end
+    local slopeF = hm0 and hm0 > 1 and (pB.Y - pA.Y) / hm0 or 0
+
+    local function poseDir(dir, roll, pitch)
+        return CFrame.lookAt(Vector3.zero, dir * CAR_FORWARD_SIGN)
+            * CFrame.Angles(pitch * CAR_FORWARD_SIGN, 0, roll * CAR_FORWARD_SIGN)
+            * CFrame.Angles(0, math.rad(YAW), 0)
+    end
+    local function bodyDirOf(vd, slope) return (vd + Vector3.new(0, slope, 0)).Unit end
+
+    local v, aLong, T, B = 0, 0, 0, 0
+    do
+        local rv = root.AssemblyLinearVelocity
+        v = math.min(Vector3.new(rv.X, 0, rv.Z).Magnitude, 60)
+    end
+    local function gearOf(s)
+        local g = 0
+        for _, sv in ipairs(GEAR_SHIFTS) do if s >= sv then g = g + 1 end end
+        return g
+    end
+    local lastGear, shiftEnd = gearOf(v), 0
+
+    local wS, rollF = 0, 0          
+    local laneX, laneV, laneTarget, nextLane = 0, 0, 0, os.clock() + rnd(2, 5)
+    local ph1, ph2 = math.random() * 6.28, math.random() * 6.28
+
+    local ev
+    local nextEv = os.clock() + rnd(8, 14)
+    local evCount = 0
+
+    local sOn, sUntil, sNext, pressCount = false, 0, 0, 0
+    local function driveKeys(now)
+        if USE_KEY_S then
+            if sOn then
+                if now >= sUntil or v < 5 then
+                    setKey(Enum.KeyCode.S, false)
+                    sOn = false
+                    sNext = now + rnd(0.06, 0.18)
+                end
+            elseif B > BRAKE_KEY_THRESHOLD and v > BRAKE_KEY_MIN_SPEED and now >= sNext then
+                setKey(Enum.KeyCode.S, true)
+                sOn = true
+                pressCount += 1
+                sUntil = now + math.clamp(0.10 + B * 0.45, 0.10, 0.5)
+            end
+        end
+        if USE_KEY_W then setKey(Enum.KeyCode.W, T > 0.08 and not released) end
+    end
+
+    local lv, ao, att = setupRaceConstraints(root)
+    do
+        local okM, mass = pcall(function() return root.AssemblyMass end)
+        if okM and type(mass) == "number" then
+            print(string.format("   ⚖️ AssemblyMass=%.0f | lực LV=%.0f → gia tốc tối đa ≈ %.0f stud/s²",
+                mass, lv.MaxForce, lv.MaxForce / math.max(mass, 1)))
+        end
+    end
+
+    lv.VectorVelocity = Vector3.zero
+    ao.CFrame = poseDir(bodyDirOf(vdir, slopeF), 0, 0)
+    task.wait(WARMUP_TIME)
+
+    if root.Parent then
+        d = select(1, projectD(root.Position, d0))
+    end
+
+    local launchT0 = os.clock()
+    local reaction = rnd(REACTION_MIN, REACTION_MAX)
+    local uiNext, maxV = 0, 0
+
+    while running do
+        local dt  = math.min(RS.Heartbeat:Wait(), 0.05)
+        local now = os.clock()
+
+        if not car.Parent or not seat.Parent or not root.Parent then
+            cleanupRace(lv, ao, att)
+            return false
+        end
+
+        if hum and not hum.SeatPart then
+            print("   ⚠️ Bị văng khỏi xe! Dừng vòng đua.")
+            cleanupRace(lv, ao, att)
+            return false, "ejected"
+        end
+
+        if now - t0 > maxT then
+            smoothStop(lv, root, STOP_TIME_STOP)
+            task.wait(0.25)
+            cleanupRace(lv, ao, att)
+            return false
+        end
+
+        local realPos = root.Position
+        local realD, distToPath = projectD(realPos, d)
+        if distToPath <= MAX_PATH_DIST then
+            d = math.min(realD, TOTAL)
+        else
+            d = math.min(d + v * dt * 0.5, TOTAL)
+        end
+
+        if not released and d >= TOTAL - releaseDist then
+            released  = true
+            releaseT0 = now
+            releaseV0 = math.max(v, 1)
+            local want = (TOTAL - d) + finishOS
+            releaseDur = math.clamp(2.2 * want / math.max(releaseV0, 30), FINISH_DUR_MIN, FINISH_DUR_MAX)
+            print(string.format("   🏁 Phanh cuối: v0=%.0f, còn %.0f stud, dur=%.2fs",
+                releaseV0, TOTAL - d, releaseDur))
+        end
+
+        local span  = LOOKAHEAD * var.lookaheadMul + v * 0.05
+        local pAt   = at(d)
+        local aheadP = at(math.min(d + span, TOTAL))
+        local tNow, hmag = flatDir(pAt, aheadP, vdir)
+        local rightNow = Vector3.new(-tNow.Z, 0, tNow.X)
+
+        if now >= nextLane then
+            if math.random() < 0.3 then
+                laneTarget = rnd(-1, 1)
+            else
+                laneTarget = rnd(-var.laneMax, var.laneMax)
+            end
+            nextLane = now + rnd(LANE_CHANGE_MIN, LANE_CHANGE_MAX)
+        end
+        local laneAcc = LANE_OMEGA ^ 2 * (laneTarget - laneX) - 2 * LANE_OMEGA * laneV
+        laneV = math.clamp(laneV + laneAcc * dt, -LANE_MAX_VEL, LANE_MAX_VEL)
+        laneX = laneX + laneV * dt
+
+        local kAbs     = gridAt(gAbsK, d + 20)
+        local laneGain = 1 - math.clamp(kAbs * 400, 0, 0.7)   
+        local lat = laneX * laneGain + gridAt(gRace, d) * var.raceScale
+        lat = math.clamp(lat, -LAT_TOTAL_MAX, LAT_TOTAL_MAX)
+        lat = lat * math.clamp((LAT_FADE_DIST + 6 - distToPath) / 6, 0, 1)
+
+        local off = Vector3.new(realPos.X - pAt.X, 0, realPos.Z - pAt.Z)
+        local e = off:Dot(rightNow) - lat                      
+        local corr = math.clamp(math.atan(STEER_KE * e / (v + STEER_KS)), -STEER_MAX_CORR, STEER_MAX_CORR)
+        if released then   
+            corr = corr + finishDrift * math.clamp((now - releaseT0) / 0.5, 0, 1)
+        end
+        local desired = rotY(tNow, corr)
+
+        local crossY = vdir.Z * desired.X - vdir.X * desired.Z
+        local dotV   = vdir.X * desired.X + vdir.Z * desired.Z
+        local errA   = math.atan2(crossY, dotV)
+        local kff    = gridAt(gKL, d + span * 0.5)
+        local wMax   = A_LAT_MAX * STEER_LAT_MUL / math.max(v, 30)
+        local w      = math.clamp(HEADING_GAIN * errA + v * kff, -wMax, wMax)
+
+        vdir = rotY(vdir, w * dt)
+        vdir = vdir.Magnitude > 0.01 and vdir.Unit or tNow
+        wS = wS + (w - wS) * math.clamp(dt / 0.15, 0, 1)
+
+        if released then
+            local x = math.clamp((now - releaseT0) / releaseDur, 0, 1)
+            if x >= 1 then
+                if lv.Parent then lv.VectorVelocity = Vector3.zero end
+                task.wait(0.2)
+                cleanupRace(lv, ao, att)
+                local el = now - t0
+                print(string.format("   📊 Vòng: %.1fs | TB %.0f | max %.0f | S×%d | sự kiện %d",
+                    el, (d - d0) / math.max(el, 1), maxV, pressCount, evCount))
+                return true
+            end
+            local xs = x ^ finishShape
+            local vPrev = v
+            v = releaseV0 * (1 - (3 * xs * xs - 2 * xs * xs * xs))   
+            aLong = (v - vPrev) / math.max(dt, 1e-3)
+            T = 0
+            B = math.clamp(-aLong / BRAKE_MAX, 0, 1)
+        else
+            local vtBase  = gridAt(prof, d + v * PREVIEW_TIME)
+            local vtAhead = gridAt(prof, d + v * PREVIEW_TIME + 8)
+            local slopeV  = (vtAhead - vtBase) / 8
+            local speedMod = 1 + math.sin(now * var.slowFreq + var.slowPhase) * var.slowAmp
+            local vt = vtBase * speedMod
+
+            local evBrake = 0
+            if ev then
+                if now >= ev.t1 then
+                    ev = nil
+                elseif ev.kind == "lift" then
+                    local x = (now - ev.t0) / (ev.t1 - ev.t0)
+                    vt = vt * (1 - ev.depth * math.sin(math.pi * x))
+                else
+                    evBrake = ev.level
+                end
+            end
+            if EVENTS_ENABLED and not ev and now >= nextEv
+                and now - launchT0 > 8 and v > 0.6 * vtBase
+                and d < TOTAL - 500 and gridAt(gAbsK, d) < 1 / 300 then
+                if math.random() < LIFT_CHANCE then
+                    ev = {kind = "lift", t0 = now, t1 = now + rnd(LIFT_DUR_MIN, LIFT_DUR_MAX),
+                          depth = rnd(LIFT_DEPTH_MIN, LIFT_DEPTH_MAX)}
+                else
+                    ev = {kind = "tap", t0 = now, t1 = now + rnd(TAP_DUR_MIN, TAP_DUR_MAX),
+                          level = rnd(TAP_LEVEL_MIN, TAP_LEVEL_MAX)}
+                end
+                evCount += 1
+                nextEv = ev.t1 + rnd(EVENT_GAP_MIN, EVENT_GAP_MAX)
+            end
+
+            local aDes = SPEED_KP * (vt - v) + slopeV * v * speedMod
+
+            local coast = COAST_BASE + COAST_QUAD * v * v
+            local vmax  = math.max(cruise * VMAX_MUL, 250)
+            local aEng  = ACCEL_MAX * math.max(0.05, 1 - (v / vmax) ^ 2)
+
+            local g = gearOf(v)
+            if g > lastGear and T > 0.3 then
+                shiftEnd = now + rnd(SHIFT_CUT_MIN, SHIFT_CUT_MAX)
+            end
+            lastGear = g
+            local shiftF = (now < shiftEnd) and SHIFT_CUT_FACTOR or 1
+
+            local Td, Bd = 0, 0
+            if now - launchT0 >= reaction then
+                if aDes >= -coast then
+                    Td = math.clamp((aDes + coast) / aEng, 0, 1)
+                else
+                    Bd = math.clamp((-aDes - coast) / BRAKE_MAX, 0, 1)
+                end
+            end
+            if evBrake > 0 then Td = 0; Bd = math.max(Bd, evBrake) end
+
+            T = T + math.clamp(Td - T, -THR_DN * dt, THR_UP * dt)
+            B = B + math.clamp(Bd - B, -BRK_DN * dt, BRK_UP * dt)
+
+            local aT = T * aEng * shiftF - coast - B * BRAKE_MAX
+            local lim
+            if aT > aLong then
+                lim = (aLong >= 0) and JERK_UP or JERK_DOWN
+            else
+                lim = (aLong <= 0) and JERK_BRAKE or JERK_DOWN
+            end
+            aLong = aLong + math.clamp(aT - aLong, -lim * dt, lim * dt)
+            v = v + aLong * dt
+            if v < 0 then v = 0; if aLong < 0 then aLong = 0 end end
+            if v > MAX_SAFE_SPEED then v = MAX_SAFE_SPEED end
+
+            if now - launchT0 > 1.5 then
+                local rv = root.AssemblyLinearVelocity
+                local vReal = rv.X * vdir.X + rv.Z * vdir.Z
+                if v - vReal > SYNC_DEAD then
+                    v = v - (v - vReal - SYNC_DEAD) * math.clamp(SYNC_RATE * dt, 0, 1)
+                end
+            end
+        end
+
+        if v > maxV then maxV = v end
+
+        if hmag and hmag > 3 then
+            slopeF = slopeF + ((aheadP.Y - pAt.Y) / hmag - slopeF) * math.clamp(dt / 0.25, 0, 1)
+        end
+        local bodyDir = bodyDirOf(vdir, slopeF)
+        if Y_FORCE_FULL then
+            lv.VectorVelocity = bodyDir * v
+        else
+            lv.VectorVelocity = vdir * v
+        end
+
+        local rollT = LEAN_FACTOR * math.atan(v * wS / 196.2)
+        rollT = math.clamp(rollT, -math.rad(LEAN_MAX_DEG), math.rad(LEAN_MAX_DEG))
+        rollF = rollF + (rollT - rollF) * math.clamp(dt / 0.12, 0, 1)
+        local pitchA = math.clamp(aLong * PITCH_PER_ACCEL, -PITCH_MAX_DEG, PITCH_MAX_DEG)
+        local yawN = var.yawNoiseAmp * (math.sin(now * 2.3 + ph1) * 0.6 + math.sin(now * 5.1 + ph2) * 0.4)
+        ao.CFrame = poseDir(bodyDir, rollF, math.rad(pitchA)) * CFrame.Angles(0, math.rad(yawN), 0)
+
+        driveKeys(now)
+
+        if now >= uiNext then
+            uiNext = now + 0.1
+            lbProg.Text  = string.format("Tien do: %d%%%s", math.floor(d / TOTAL * 100), released and " (phanh)" or "")
+            lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0)
+            lbSpeed.Text = string.format("Toc do: %d | Ga %d%% Phanh %d%%",
+                math.floor(v + 0.5), math.floor(T * 100 + 0.5), math.floor(B * 100 + 0.5))
+            lbYaw.Text   = string.format("Lech: %.1f | Lan: %+.1f", distToPath, lat)
+        end
+    end
+
+    if not released then
+        smoothStop(lv, root, STOP_TIME_STOP)
+        task.wait(0.25)
+    end
+    cleanupRace(lv, ao, att)
+    return false
+end
+
+local cycles = 0
+
+local function getQuick()
+    local q = P(pg, "RacingUI", "MainFrame", "MenuPanel", "Footer", "Quick")
+    return q and shown(q) and q or nil
+end
+local function getClose()
+    local c = P(pg, "RacingUI", "MainFrame", "Overlay", "Leaderboard", "Close")
+    return c and shown(c) and c or nil
+end
+
+local function isTeleportOpen()
+    local t = P(pg, "MainUI", "MainFrame", "Selected", "Teleport")
+    return t and shown(t)
+end
+
+local function findRaidEntry(list)
+    if RAID_TELEPORT_NAME ~= "" then
+        return list:FindFirstChild(RAID_TELEPORT_NAME)
+    end
+    local matches = {}
+    for _, e in ipairs(list:GetChildren()) do
+        if e.Name ~= "GP_Track_Race" then
+            local txt = ""
+            for _, d in ipairs(e:GetDescendants()) do
+                if d:IsA("TextLabel") or d:IsA("TextButton") then txt = txt .. " " .. d.Text end
+            end
+            if (e.Name .. txt):lower():find("raid", 1, true) then matches[#matches + 1] = e end
+        end
+    end
+    if #matches == 1 then return matches[1] end
+    return nil
+end
+
+local function teleportToRaidArea()
+    if not isTeleportOpen() then
+        local menuTp = P(pg, "MainUI", "MainFrame", "Menu", "Teleport")
+        if not menuTp then print("   ❌ Không thấy Menu.Teleport") return false end
+        status("Mo UI Teleport...")
+        click(menuTp)
+        local t = os.clock()
+        while running and os.clock() - t < 5 do
+            if isTeleportOpen() then break end
+            task.wait(0.25)
+        end
+        if not isTeleportOpen() then print("   ❌ UI Teleport không mở") return false end
+        task.wait(0.5)
+    end
+
+    local tab = P(pg, "MainUI", "MainFrame", "Selected", "Teleport", "Tabs", "Races")
+    if not tab then print("   ❌ Không thấy Tabs.Races") return false end
+    click(tab)
+    task.wait(0.6)
+
+    local list
+    local t = os.clock()
+    while running and os.clock() - t < 5 do
+        list = P(pg, "MainUI", "MainFrame", "Selected", "Teleport", "List")
+        if list and #list:GetChildren() > 0 then break end
+        task.wait(0.25)
+    end
+    if not list then print("   ❌ Không thấy Teleport.List") return false end
+
+    local entry = findRaidEntry(list)
+    if not entry then
+        print("   ❌ Chưa xác định được mục teleport raid:")
+        for _, e in ipairs(list:GetChildren()) do print("      -", e.Name, e.ClassName) end
+        return false
+    end
+
+    local btn = entry:FindFirstChild("Button") or entry
+    print("   🎯 Teleport tới mục:", entry.Name)
+    status("Teleport: " .. entry.Name)
+    click(btn)
+    task.wait(WAIT_AFTER_TELEPORT)
+    return true
+end
+
+local function driveToRaid(seat)
+    local root = seat and seat.Parent and (seat.AssemblyRootPart or seat)
+    if not root then return false end
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    local lv, ao, att = setupRaceConstraints(root)
+    local t0, reached = os.clock(), false
+
+    local cruise = rnd(RAID_SPEED_MIN, RAID_SPEED_MAX)
+    local goal = RAID_POS + Vector3.new(rnd(-RAID_GOAL_JITTER, RAID_GOAL_JITTER), 0,
+                                        rnd(-RAID_GOAL_JITTER, RAID_GOAL_JITTER))
+    local arriveDist = RAID_ARRIVE_DIST
+
+    local v, aLong, wS, rollF = 0, 0, 0, 0
+    do
+        local rv = root.AssemblyLinearVelocity
+        v = math.min(Vector3.new(rv.X, 0, rv.Z).Magnitude, 60)
+    end
+    local vdir
+    do
+        local cf  = root.CFrame * CFrame.Angles(0, -math.rad(YAW), 0)
+        local lvv = cf.LookVector * CAR_FORWARD_SIGN
+        vdir = flatDir(Vector3.zero, Vector3.new(lvv.X, 0, lvv.Z), nil)
+        if not vdir then vdir = flatDir(root.Position, goal, Vector3.new(0, 0, -1)) end
+    end
+
+    local ph = math.random() * 6.28
+    local stopping, stopT0 = false, 0
+    local sOn, sUntil, sNext = false, 0, 0
+    local uiNext = 0
+
+    while running and os.clock() - t0 < RAID_DRIVE_TIMEOUT do
+        local dt  = math.min(RS.Heartbeat:Wait(), 0.05)
+        local now = os.clock()
+        if not seat.Parent or not root.Parent then break end
+        if hum and not hum.SeatPart then break end
+
+        local pos  = root.Position
+        local to   = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
+        local dist = to.Magnitude
+
+        if not stopping and (getQuick() or dist <= arriveDist) then
+            stopping, stopT0 = true, now
+        end
+        if stopping and (v < 3 or now - stopT0 > 5) then reached = true break end
+
+        local want = dist > 0.5 and (to / dist) or vdir
+        local crossY = vdir.Z * want.X - vdir.X * want.Z
+        local dotV   = vdir.X * want.X + vdir.Z * want.Z
+        local errA   = math.atan2(crossY, dotV)
+        local wMax   = math.min(math.max(v / RAID_MIN_RADIUS, 0.3), A_LAT_MAX * 1.2 / math.max(v, 30))
+        local w = 0
+        if not stopping then
+            w = math.clamp(RAID_HEADING_GAIN * errA + RAID_WOBBLE * math.sin(now * 0.9 + ph), -wMax, wMax)
+        end
+        vdir = rotY(vdir, w * dt)
+        vdir = vdir.Magnitude > 0.01 and vdir.Unit or want
+        wS = wS + (w - wS) * math.clamp(dt / 0.15, 0, 1)
+
+        local vt = 0
+        if not stopping then
+            -- Đã sửa dòng này: bỏ "+ 6" thành "+ 0" để không bị trượt đà
+            local brakeV = math.sqrt(2 * RAID_DECEL * math.max(dist - arriveDist, 0)) + 0
+            vt = math.min(cruise, brakeV) * math.clamp(1 - math.abs(errA) / 1.3, 0.3, 1)
+        end
+        local aT = math.clamp(SPEED_KP * (vt - v), -RAID_DECEL, RAID_ACCEL)
+        local lim
+        if aT > aLong then
+            lim = (aLong >= 0) and JERK_UP or JERK_DOWN
+        else
+            lim = (aLong <= 0) and JERK_BRAKE or JERK_DOWN
+        end
+        aLong = aLong + math.clamp(aT - aLong, -lim * dt, lim * dt)
+        v = v + aLong * dt
+        if v < 0 then v = 0; if aLong < 0 then aLong = 0 end end
+
+        if now - t0 > 1.5 then
+            local rv = root.AssemblyLinearVelocity
+            local vReal = rv.X * vdir.X + rv.Z * vdir.Z
+            if v - vReal > SYNC_DEAD then
+                v = v - (v - vReal - SYNC_DEAD) * math.clamp(SYNC_RATE * dt, 0, 1)
+            end
+        end
+
+        lv.VectorVelocity = vdir * v
+
+        local rollT = math.clamp(LEAN_FACTOR * math.atan(v * wS / 196.2),
+            -math.rad(LEAN_MAX_DEG), math.rad(LEAN_MAX_DEG))
+        rollF = rollF + (rollT - rollF) * math.clamp(dt / 0.12, 0, 1)
+        local pitchA = math.rad(math.clamp(aLong * PITCH_PER_ACCEL, -PITCH_MAX_DEG, PITCH_MAX_DEG))
+        ao.CFrame = CFrame.lookAt(Vector3.zero, vdir * CAR_FORWARD_SIGN)
+            * CFrame.Angles(pitchA * CAR_FORWARD_SIGN, 0, rollF * CAR_FORWARD_SIGN)
+            * CFrame.Angles(0, math.rad(YAW), 0)
+
+        if USE_KEY_S then
+            local Bk = math.clamp(-aLong / BRAKE_MAX, 0, 1)
+            if sOn then
+                if now >= sUntil or v < 5 then
+                    setKey(Enum.KeyCode.S, false)
+                    sOn = false
+                    sNext = now + rnd(0.06, 0.18)
+                end
+            elseif Bk > BRAKE_KEY_THRESHOLD and v > BRAKE_KEY_MIN_SPEED and now >= sNext then
+                setKey(Enum.KeyCode.S, true)
+                sOn = true
+                sUntil = now + math.clamp(0.10 + Bk * 0.45, 0.10, 0.5)
+            end
+        end
+
+        if now >= uiNext then
+            uiNext = now + 0.1
+            lbProg.Text = string.format("Toi raid: %d stud", math.floor(dist))
+            lbSpeed.Text = string.format("Toc do: %d", math.floor(v + 0.5))
+        end
+    end
+
+    releaseKeys()
+    if lv.Parent and root.Parent then
+        smoothStop(lv, root, STOP_TIME_RAID)
+        task.wait(0.3)
+    end
+    cleanupRace(lv, ao, att)
+    return reached
+end
+
+local function mainLoop()
+    local stopReason
+    while running do
+        local car, seat
+
+        local c0, s0 = findCar()
+        if c0 and s0 and s0.Parent and isSeatedIn(c0) then
+            car, seat = c0, s0
+            status("Dang ngoi tren xe, TP thang")
+            print("   ♻️ Đang ngồi trên xe → bỏ qua spawn, TP thẳng")
+        else
+            print("   🚗 Không ngồi trên xe → spawn xe mới")
+            status("Spawn xe...")
+            local r = spawnCar()
+            if not r then status("Khong spawn duoc, thu lai") task.wait(3) continue end
+            car, seat = r[1], r[2]
+
+            status("Đợi " .. WAIT_AFTER_SPAWN .. "s...")
+            task.wait(WAIT_AFTER_SPAWN)
+
+            status("Lại gần xe + giữ E...")
+            if not sit(seat) then status("Khong ngoi duoc, thu lai") task.wait(3) continue end
+            task.wait(rnd(0.5, 1))
+        end
+
+        if not teleportToRaidArea() then
+            status("Khong vao duoc khu raid, thu lai")
+            task.wait(3)
+            continue
+        end
+
+        local r2 = waitFor(function()
+            local c, s = findCar()
+            if c and s and s.Parent then return {c, s} end
+        end, 15)
+        if not r2 then status("Mat xe sau teleport, lam lai") task.wait(2) continue end
+        car, seat = r2[1], r2[2]
+
+        local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+        if hum and not hum.SeatPart then
+            status("Ngoi lai xe...")
+            if not sit(seat) then status("Khong ngoi lai duoc, lam lai") task.wait(3) continue end
+        end
+
+        status("Lai xe den khu raid...")
+        local arrived = driveToRaid(seat)
+        if not running then break end
+        if not arrived and not getQuick() then
+            status("Chua toi khu raid, lam lai")
+            task.wait(2)
+            continue
+        end
+
+        status("Cho menu raid...")
+        local q = waitFor(getQuick, 20)
+        if not q then status("Menu khong hien, lam lai") task.wait(2) continue end
+        task.wait(rnd(0.5, 1.2))
+        click(q)
+
+        for i = WAIT_AFTER_SOLO, 1, -1 do
+            if not running then break end
+            status("Cho bat dau: " .. i .. "s")
+            task.wait(1)
+        end
+        if not running then break end
+
+        if SPEED_RANDOM then
+            SPEED = pickLapSpeed()
+            refresh()
+            print("   🎲 Tốc độ vòng này:", SPEED)
+        end
+        status("Dang dua...")
+        local ok, why = runLap(car, seat)
+        if why == "far_from_path" then
+            stopReason = "Xe qua xa path, da dung"
+            running = false
+            break
+        end
+        status(ok and "Xong vong, cho Close..." or "Loi giua duong, lam lai")
+
+        local c = waitFor(getClose, 20)
+        if c then
+            task.wait(rnd(CLOSE_DELAY_MIN, CLOSE_DELAY_MAX))
+            click(c)
+        end
+        if ok then
+            cycles += 1
+            lbCycle.Text = "So vong da xong: " .. cycles
+        end
+        task.wait(AFTER_CLOSE_WAIT)
+    end
+    running = false
+    releaseKeys()
+    status(stopReason or "Da dung")
+end
+
+btnStart.MouseButton1Click:Connect(function()
+    if running then return end
+    if #pts < 2 then status("Chua doc duoc path") return end
+    running = true
+    task.spawn(mainLoop)
+end)
+
+btnStop.MouseButton1Click:Connect(function()
+    releaseKeys()
+    if running then
+        running = false
+        status("Dang dung...")
+        task.spawn(function()
+            task.wait(3)
+            local _, seat = findCar()
+            local root = seat and (seat.AssemblyRootPart or seat)
+            if root then
+                for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                    local o = root:FindFirstChild(n)
+                    if o then pcall(function() o:Destroy() end) end
+                end
+            end
+            releaseKeys()
+            status("Da dung")
+        end)
+    else
+        local _, seat = findCar()
+        local root = seat and (seat.AssemblyRootPart or seat)
+        if root then
+            for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                local o = root:FindFirstChild(n)
+                if o then pcall(function() o:Destroy() end) end
+            end
+        end
+        status("Da dung")
+    end
+end)
+
+btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
