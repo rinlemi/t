@@ -1,6 +1,5 @@
 local Players    = game:GetService("Players")
 local RS         = game:GetService("RunService")
-local VIM        = game:GetService("VirtualInputManager")
 local lp         = Players.LocalPlayer
 local pg         = lp:WaitForChild("PlayerGui")
 
@@ -384,12 +383,20 @@ local keyState = {}
 local function setKey(code, down)
     if keyState[code] == down then return end
     keyState[code] = down
-    pcall(function() VIM:SendKeyEvent(down, code, false, game) end)
+    -- Sử dụng pcall để tránh lỗi nếu VirtualInputManager không được hỗ trợ
+    pcall(function() 
+        local VIM = game:GetService("VirtualInputManager")
+        VIM:SendKeyEvent(down, code, false, game) 
+    end)
 end
+
 local function releaseKeys()
     for code, down in pairs(keyState) do
         if down then
-            pcall(function() VIM:SendKeyEvent(false, code, false, game) end)
+            pcall(function() 
+                local VIM = game:GetService("VirtualInputManager")
+                VIM:SendKeyEvent(false, code, false, game) 
+            end)
         end
         keyState[code] = false
     end
@@ -452,48 +459,72 @@ local function smoothStop(lv, root, duration)
     if lv.Parent then lv.VectorVelocity = Vector3.zero end
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "RacePlayback", false, 999
-if not pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) or not gui.Parent then
-    gui.Parent = pg
+-- ===== UI PANEL (Phiên bản tương thích Mobile) =====
+local function safeInstance(className, parent)
+    local ok, obj = pcall(function()
+        return Instance.new(className)
+    end)
+    if ok and obj then
+        pcall(function() obj.Parent = parent end)
+        return obj
+    end
+    return nil
 end
 
-local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.new(0, 240, 0, 304)
-panel.Position = UDim2.new(1, -250, 0.3, 0)
-panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-panel.BackgroundTransparency = 0.15
-panel.BorderSizePixel = 0
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+local gui = safeInstance("ScreenGui", nil)
+if gui then
+    gui.Name = "RacePlayback"
+    gui.ResetOnSpawn = false
+    gui.DisplayOrder = 999
+    local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+    if not okParent or not gui.Parent then
+        pcall(function() gui.Parent = pg end)
+    end
+end
+
+local panel = safeInstance("Frame", gui)
+if panel then
+    panel.Size = UDim2.new(0, 240, 0, 304)
+    panel.Position = UDim2.new(1, -250, 0.3, 0)
+    panel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    panel.BackgroundTransparency = 0.15
+    panel.BorderSizePixel = 0
+    local corner = safeInstance("UICorner", panel)
+    if corner then corner.CornerRadius = UDim.new(0, 8) end
+end
 
 local function label(y, text)
-    local l = Instance.new("TextLabel", panel)
-    l.Size = UDim2.new(1, -16, 0, 20)
-    l.Position = UDim2.new(0, 8, 0, y)
-    l.BackgroundTransparency = 1
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.Font = Enum.Font.GothamMedium
-    l.TextSize = 13
-    l.TextColor3 = Color3.new(1, 1, 1)
-    l.Text = text
+    local l = safeInstance("TextLabel", panel)
+    if l then
+        l.Size = UDim2.new(1, -16, 0, 20)
+        l.Position = UDim2.new(0, 8, 0, y)
+        l.BackgroundTransparency = 1
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Font = Enum.Font.GothamMedium
+        l.TextSize = 13
+        l.TextColor3 = Color3.new(1, 1, 1)
+        l.Text = text
+    end
     return l
 end
 
 local function button(y, text, color)
-    local b = Instance.new("TextButton", panel)
-    b.Size = UDim2.new(1, -16, 0, 32)
-    b.Position = UDim2.new(0, 8, 0, y)
-    b.BackgroundColor3 = color
-    b.BorderSizePixel = 0
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 13
-    b.TextColor3 = Color3.new(1, 1, 1)
-    b.Text = text
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    local b = safeInstance("TextButton", panel)
+    if b then
+        b.Size = UDim2.new(1, -16, 0, 32)
+        b.Position = UDim2.new(0, 8, 0, y)
+        b.BackgroundColor3 = color
+        b.BorderSizePixel = 0
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 13
+        b.TextColor3 = Color3.new(1, 1, 1)
+        b.Text = text
+        local corner = safeInstance("UICorner", b)
+        if corner then corner.CornerRadius = UDim.new(0, 6) end
+    end
     return b
 end
 
-label(4, "TU DONG DUA RAID v8.0").Font = Enum.Font.GothamBold
 local lbStatus = label(28, "")
 local lbProg   = label(48, "Tien do: 0%")
 local lbTime   = label(68, "Thoi gian: 0.0s")
@@ -501,40 +532,48 @@ local lbSpeed  = label(88, "")
 local lbYaw    = label(108, "")
 local lbCycle  = label(128, "So vong da xong: 0")
 
-local tbSpeed = Instance.new("TextBox", panel)
-tbSpeed.Size = UDim2.new(1, -16, 0, 32)
-tbSpeed.Position = UDim2.new(0, 8, 0, 154)
-tbSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-tbSpeed.BorderSizePixel = 0
-tbSpeed.Font = Enum.Font.GothamBold
-tbSpeed.TextSize = 13
-tbSpeed.TextColor3 = Color3.new(1, 1, 1)
-tbSpeed.PlaceholderText = "Nhap toc do roi Enter"
-tbSpeed.ClearTextOnFocus = false
-tbSpeed.Text = tostring(SPEED)
-Instance.new("UICorner", tbSpeed).CornerRadius = UDim.new(0, 6)
+local tbSpeed = safeInstance("TextBox", panel)
+if tbSpeed then
+    tbSpeed.Size = UDim2.new(1, -16, 0, 32)
+    tbSpeed.Position = UDim2.new(0, 8, 0, 154)
+    tbSpeed.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    tbSpeed.BorderSizePixel = 0
+    tbSpeed.Font = Enum.Font.GothamBold
+    tbSpeed.TextSize = 13
+    tbSpeed.TextColor3 = Color3.new(1, 1, 1)
+    tbSpeed.PlaceholderText = "Nhap toc do roi Enter"
+    tbSpeed.ClearTextOnFocus = false
+    tbSpeed.Text = tostring(SPEED)
+    local corner = safeInstance("UICorner", tbSpeed)
+    if corner then corner.CornerRadius = UDim.new(0, 6) end
+end
 
 local btnStart = button(192, "START", Color3.fromRGB(40, 150, 70))
 local btnStop  = button(230, "STOP", Color3.fromRGB(170, 60, 60))
 local btnYaw   = button(268, "XOAY XE +90", Color3.fromRGB(60, 60, 60))
 
-local function status(t) lbStatus.Text = t end
+local function status(t)
+    if lbStatus then lbStatus.Text = t end
+end
+
 local function refresh()
     if SPEED_RANDOM then
-        lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX)
+        if lbSpeed then lbSpeed.Text = string.format("Toc do: RANDOM %d-%d", RAND_MIN, RAND_MAX) end
     else
-        lbSpeed.Text = "Toc do cai: " .. SPEED
+        if lbSpeed then lbSpeed.Text = "Toc do cai: " .. SPEED end
     end
-    lbYaw.Text   = "Xoay xe: " .. YAW .. " do"
-    tbSpeed.Text = tostring(SPEED)
+    if lbYaw then lbYaw.Text = "Xoay xe: " .. YAW .. " do" end
+    if tbSpeed then tbSpeed.Text = tostring(SPEED) end
 end
 refresh()
 
-tbSpeed.FocusLost:Connect(function()
-    local n = tonumber(tbSpeed.Text)
-    if n then SPEED = math.clamp(n, 20, MAX_SAFE_SPEED) end
-    refresh()
-end)
+if tbSpeed then
+    tbSpeed.FocusLost:Connect(function()
+        local n = tonumber(tbSpeed.Text)
+        if n then SPEED = math.clamp(n, 20, MAX_SAFE_SPEED) end
+        refresh()
+    end)
+end
 
 status(#pts >= 2 and (#pts .. " diem, " .. math.floor(TOTAL) .. " stud") or ("Khong doc duoc " .. FILE))
 if G > 0 then
@@ -706,9 +745,16 @@ local function sit(seat)
         end
 
         if not hum.SeatPart then
-            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            -- Sử dụng pcall cho VirtualInputManager
+            pcall(function()
+                local VIM = game:GetService("VirtualInputManager")
+                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            end)
             task.wait(math.max(holdDur, 0.5) + 0.3)
-            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            pcall(function()
+                local VIM = game:GetService("VirtualInputManager")
+                VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            end)
             task.wait(0.5)
         end
 
@@ -1079,11 +1125,11 @@ local function runLap(car, seat)
 
         if now >= uiNext then
             uiNext = now + 0.1
-            lbProg.Text  = string.format("Tien do: %d%%%s", math.floor(d / TOTAL * 100), released and " (phanh)" or "")
-            lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0)
-            lbSpeed.Text = string.format("Toc do: %d | Ga %d%% Phanh %d%%",
-                math.floor(v + 0.5), math.floor(T * 100 + 0.5), math.floor(B * 100 + 0.5))
-            lbYaw.Text   = string.format("Lech: %.1f | Lan: %+.1f", distToPath, lat)
+            if lbProg then lbProg.Text  = string.format("Tien do: %d%%%s", math.floor(d / TOTAL * 100), released and " (phanh)" or "") end
+            if lbTime then lbTime.Text  = string.format("Thoi gian: %.1fs", now - t0) end
+            if lbSpeed then lbSpeed.Text = string.format("Toc do: %d | Ga %d%% Phanh %d%%",
+                math.floor(v + 0.5), math.floor(T * 100 + 0.5), math.floor(B * 100 + 0.5)) end
+            if lbYaw then lbYaw.Text   = string.format("Lech: %.1f | Lan: %+.1f", distToPath, lat) end
         end
     end
 
@@ -1283,8 +1329,8 @@ local function driveToRaid(seat)
 
         if now >= uiNext then
             uiNext = now + 0.1
-            lbProg.Text = string.format("Toi raid: %d stud", math.floor(dist))
-            lbSpeed.Text = string.format("Toc do: %d", math.floor(v + 0.5))
+            if lbProg then lbProg.Text = string.format("Toi raid: %d stud", math.floor(dist)) end
+            if lbSpeed then lbSpeed.Text = string.format("Toc do: %d", math.floor(v + 0.5)) end
         end
     end
 
@@ -1384,7 +1430,7 @@ local function mainLoop()
         end
         if ok then
             cycles += 1
-            lbCycle.Text = "So vong da xong: " .. cycles
+            if lbCycle then lbCycle.Text = "So vong da xong: " .. cycles end
         end
         task.wait(AFTER_CLOSE_WAIT)
     end
@@ -1393,20 +1439,35 @@ local function mainLoop()
     status(stopReason or "Da dung")
 end
 
-btnStart.MouseButton1Click:Connect(function()
-    if running then return end
-    if #pts < 2 then status("Chua doc duoc path") return end
-    running = true
-    task.spawn(mainLoop)
-end)
+if btnStart then
+    btnStart.MouseButton1Click:Connect(function()
+        if running then return end
+        if #pts < 2 then status("Chua doc duoc path") return end
+        running = true
+        task.spawn(mainLoop)
+    end)
+end
 
-btnStop.MouseButton1Click:Connect(function()
-    releaseKeys()
-    if running then
-        running = false
-        status("Dang dung...")
-        task.spawn(function()
-            task.wait(3)
+if btnStop then
+    btnStop.MouseButton1Click:Connect(function()
+        releaseKeys()
+        if running then
+            running = false
+            status("Dang dung...")
+            task.spawn(function()
+                task.wait(3)
+                local _, seat = findCar()
+                local root = seat and (seat.AssemblyRootPart or seat)
+                if root then
+                    for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
+                        local o = root:FindFirstChild(n)
+                        if o then pcall(function() o:Destroy() end) end
+                    end
+                end
+                releaseKeys()
+                status("Da dung")
+            end)
+        else
             local _, seat = findCar()
             local root = seat and (seat.AssemblyRootPart or seat)
             if root then
@@ -1415,20 +1476,11 @@ btnStop.MouseButton1Click:Connect(function()
                     if o then pcall(function() o:Destroy() end) end
                 end
             end
-            releaseKeys()
             status("Da dung")
-        end)
-    else
-        local _, seat = findCar()
-        local root = seat and (seat.AssemblyRootPart or seat)
-        if root then
-            for _, n in ipairs({"RaceLinearVelocity", "RaceAlignOrientation", "RaceAttachment"}) do
-                local o = root:FindFirstChild(n)
-                if o then pcall(function() o:Destroy() end) end
-            end
         end
-        status("Da dung")
-    end
-end)
+    end)
+end
 
-btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
+if btnYaw then
+    btnYaw.MouseButton1Click:Connect(function() YAW = (YAW + 90) % 360 refresh() end)
+end
