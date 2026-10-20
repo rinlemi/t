@@ -111,9 +111,9 @@ local MAX_FORCE = 5e4
 
 local RAID_TELEPORT_NAME = "GP_Track_Race"
 local WAIT_AFTER_TELEPORT = 7
-local RAID_SPEED_MIN, RAID_SPEED_MAX = 60, 80  -- toc do chay toi raid (random moi lan)
-local RAID_ACCEL        = 30    -- gia toc khi chay toi raid
-local RAID_DECEL        = 80    -- do gat khi phanh de dung
+local RAID_SPEED_MIN, RAID_SPEED_MAX = 60, 61  -- toc do chay toi raid (random moi lan)
+local RAID_ACCEL        = 25    -- gia toc khi chay toi raid
+local RAID_DECEL        = 100    -- do gat khi phanh de dung
 local RAID_HEADING_GAIN = 3.0   -- do gat khi quay dau ve phia raid (nho = quay em)
 local RAID_MIN_RADIUS   = 25    -- ban kinh quay toi thieu (toc do thap quay cham)
 local RAID_WOBBLE       = 0.03  -- rung nhe khi lai (rad/s)
