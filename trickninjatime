@@ -165,6 +165,7 @@ local cancel = false
 local active = false
 local noclipConn
 local hbConn
+local holdCF, tweening = nil, false   -- khóa vị trí khi đứng yên (chống trôi xuống do trọng lực)
 local tries = {}         -- [Door] = số lần gõ thất bại
 local done = {}          -- [Door] = thời điểm đã gõ
 local lastUnderY, lastSafe
@@ -199,19 +200,22 @@ local function tweenTo(pos)
     local root = getRoot()
     if not root or not root.Parent then return false end
     local dist = (pos - root.Position).Magnitude
-    if dist < 1 then return true end
+    if dist < 1 then holdCF = root.CFrame return true end
     local rot = root.CFrame - root.CFrame.Position
     local tween = TweenService:Create(root,
         TweenInfo.new(dist / math.max(cfg.speed, 1), Enum.EasingStyle.Linear),
         {CFrame = CFrame.new(pos) * rot})
     local finished = false
     local c = tween.Completed:Connect(function() finished = true end)
+    tweening = true
     tween:Play()
     while not finished do
         if cancel or not root.Parent then tween:Cancel() break end
         task.wait(0.03)
     end
     c:Disconnect()
+    tweening = false
+    if finished and not cancel then holdCF = CFrame.new(pos) * rot end
     return finished and not cancel
 end
 
@@ -282,6 +286,18 @@ local function holdE(sec)
 end
 
 local function doKnock(door)
+    local prompt0 = door:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt0 and fireproximityprompt then
+        local hold = prompt0.HoldDuration
+        pcall(function() prompt0.HoldDuration = 0 end)
+        pcall(fireproximityprompt, prompt0)
+        pcall(function() prompt0.HoldDuration = hold end)
+        print("[TT] fireproximityprompt:", prompt0:GetFullName())
+        waitC(1)
+        if not eventActive(door) then return end
+    else
+        print("[TT] Không thấy ProximityPrompt trong Door, dùng remote")
+    end
     local okR, remote = pcall(function()
         return ReplicatedStorage.Extra.Remotes.RemoteFunction_InteractionFunction
     end)
@@ -335,6 +351,7 @@ end
 
 local function cleanup()
     if hbConn then hbConn:Disconnect() hbConn = nil end
+    holdCF = nil
     setNoclip(false)
     local root, hum = getRoot()
     if root then
@@ -390,8 +407,12 @@ local function startRun()
     cancel = false
     if hbConn then hbConn:Disconnect() end
     hbConn = RunService.Heartbeat:Connect(function()
-        local r = getRoot()
-        if r then r.AssemblyLinearVelocity = Vector3.zero end
+        local r, h = getRoot()
+        if h and h.Health <= 0 then holdCF = nil end
+        if r then
+            r.AssemblyLinearVelocity = Vector3.zero
+            if holdCF and not tweening then r.CFrame = holdCF end
+        end
     end)
     task.spawn(function()
         local ok, err = xpcall(mainLoop, function(e) return tostring(e) .. "\n" .. debug.traceback() end)
@@ -466,4 +487,4 @@ task.spawn(function()
     task.wait(2)
     if cfg.enabled then startRun() end
 end)
-print("✅ Đã load Trick or Treat Auto Knock2.1")
+print("✅ Đã load Trick or Treat Auto Knock2")
