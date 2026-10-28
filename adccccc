@@ -9,7 +9,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 local VIM               = game:GetService("VirtualInputManager")
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+do
+    local t0 = tick()
+    while not game:IsLoaded() and tick() - t0 < 60 do task.wait(0.5) end
+end
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do task.wait() LocalPlayer = Players.LocalPlayer end
 local env = (getgenv and getgenv()) or _G
@@ -57,7 +60,7 @@ gui.DisplayOrder = 999
 gui.Parent = parentGui
 
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.new(0, 250, 0, 294)
+panel.Size = UDim2.new(0, 250, 0, 326)
 panel.Position = UDim2.new(0, 10, 0.35, 0)
 panel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 panel.BorderSizePixel = 0
@@ -188,6 +191,7 @@ local cancel = false
 local active = false
 local noclipConn
 local hbConn
+local lastKnockTick, serverStart = tick(), tick()   -- watchdog: lần gõ thành công gần nhất / lúc vào server
 local holdCF, tweening = nil, false   -- khóa vị trí khi đứng yên (chống trôi xuống do trọng lực)
 local tries = {}         -- [Door] = số lần gõ thất bại
 local done = {}          -- [Door] = thời điểm đã gõ
@@ -375,6 +379,7 @@ local function visitDoor(entry)
     else
         done[entry.door] = tick()
         tries[entry.door] = nil
+        lastKnockTick = tick()
     end
     return true
 end
@@ -464,7 +469,10 @@ local function fetchServers()
     return nil
 end
 
+local hopping = false
 local function hopServer()
+    if hopping then return end
+    hopping = true
     while not cancel and env.TTGen == myGen do
         setStatus("Hết cửa → đang tìm server để hop...", Color3.fromRGB(255, 200, 0))
         local servers = fetchServers()
@@ -493,7 +501,49 @@ local function hopServer()
         end
         waitC(5)
     end
+    hopping = false
 end
+
+-- ---------------- Watchdog: chống kẹt loading / kẹt server ----------------
+local NO_PROGRESS_LIMIT = 180   -- 3 phút không gõ được cửa nào (hoặc nhân vật không load) → hop
+local MAX_STAY          = 300   -- ở 1 server quá 5 phút mà chưa hop → ép hop
+
+task.spawn(function()
+    while env.TTGen == myGen do
+        task.wait(2)
+        if cfg.enabled and cfg.hopWhenDone and not hopping then
+            local reason
+            if tick() - lastKnockTick > NO_PROGRESS_LIMIT then
+                reason = "3 phút không gõ được cửa nào / nhân vật không load"
+            elseif tick() - serverStart > MAX_STAY then
+                reason = "ở server quá 5 phút"
+            end
+            if reason then
+                print("[TT] Watchdog:", reason)
+                setStatus("⚠ " .. reason .. " → hop server", Color3.fromRGB(255, 200, 0))
+                hopServer()
+                lastKnockTick, serverStart = tick(), tick()
+            end
+        end
+    end
+end)
+
+-- Nút hop thủ công
+local btnNow = Instance.new("TextButton", panel)
+btnNow.Position = UDim2.new(0, 10, 0, 290)
+btnNow.Size = UDim2.new(1, -20, 0, 28)
+btnNow.BackgroundColor3 = Color3.fromRGB(50, 120, 200)
+btnNow.BorderSizePixel = 0
+btnNow.Font = Enum.Font.GothamBold
+btnNow.TextSize = 12
+btnNow.TextColor3 = Color3.new(1, 1, 1)
+btnNow.Text = "🔀 HOP SERVER NGAY"
+Instance.new("UICorner", btnNow).CornerRadius = UDim.new(0, 6)
+btnNow.MouseButton1Click:Connect(function()
+    if hopping then return end
+    if not active then cancel = false end
+    task.spawn(hopServer)
+end)
 
 local retryRounds = 0
 local function countActive()
@@ -511,6 +561,7 @@ end
 local function mainLoop()
     waitGameReady()
     joinTick = tick()   -- tính thời gian ở server từ lúc load xong, không phải từ lúc chạy script
+    lastKnockTick = tick()   -- load xong thì mới bắt đầu đếm 3 phút "không gõ được cửa"
     while not cancel and env.TTGen == myGen do
         local root = getRoot()
         if not root then
