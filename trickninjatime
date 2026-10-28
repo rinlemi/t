@@ -286,6 +286,11 @@ local function holdE(sec)
 end
 
 local function doKnock(door)
+    -- Cách chính: giữ E thật (đã test: ăn được)
+    print("[TT] Giữ E thật")
+    holdE(1.5)
+    waitC(0.6)
+    if cancel or not eventActive(door) then return end
     local prompt0 = door:FindFirstChildWhichIsA("ProximityPrompt", true)
         or (door.Parent and door.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
     if prompt0 and fireproximityprompt then
@@ -489,4 +494,4 @@ task.spawn(function()
     task.wait(2)
     if cfg.enabled then startRun() end
 end)
-print("✅ Đã load Trick or Treat Auto Knockaz2")
+print("✅ Đã load Trick or Treat Auto Knock")
