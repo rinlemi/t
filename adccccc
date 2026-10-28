@@ -9,7 +9,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 local VIM               = game:GetService("VirtualInputManager")
 
+if not game:IsLoaded() then game.Loaded:Wait() end
 local LocalPlayer = Players.LocalPlayer
+while not LocalPlayer do task.wait() LocalPlayer = Players.LocalPlayer end
 local env = (getgenv and getgenv()) or _G
 env.TTGen = (env.TTGen or 0) + 1
 local myGen = env.TTGen
@@ -18,6 +20,7 @@ local myGen = env.TTGen
 local CONFIG_FILE = "TrickTreat_Config.json"
 local cfg = {
     enabled = false,
+    hopWhenDone = true,   -- hết cửa thì hop server
     speed   = 300,   -- tốc độ tween
     depth   = 30,    -- độ sâu dưới mặt đất khi di chuyển (stud)
     inside  = 4,     -- chui vào trong nhà cách cửa bao nhiêu stud
@@ -34,6 +37,7 @@ local function loadConfig()
     local ok, d = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
     if not ok or type(d) ~= "table" then return end
     if type(d.enabled) == "boolean" then cfg.enabled = d.enabled end
+    if type(d.hopWhenDone) == "boolean" then cfg.hopWhenDone = d.hopWhenDone end
     if type(d.speed)  == "number" then cfg.speed  = math.clamp(d.speed, 50, 2000) end
     if type(d.depth)  == "number" then cfg.depth  = math.clamp(d.depth, 5, 150) end
     if type(d.inside) == "number" then cfg.inside = math.clamp(d.inside, -10, 30) end
@@ -53,7 +57,7 @@ gui.DisplayOrder = 999
 gui.Parent = parentGui
 
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.new(0, 250, 0, 262)
+panel.Size = UDim2.new(0, 250, 0, 294)
 panel.Position = UDim2.new(0, 10, 0.35, 0)
 panel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 panel.BorderSizePixel = 0
@@ -159,6 +163,25 @@ mkBox(138, "Tốc độ tween", "speed", 50, 2000)
 mkBox(166, "Độ sâu dưới đất", "depth", 5, 150)
 mkBox(194, "Chui vào trong (stud)", "inside", -10, 30)
 mkBox(222, "Đứng lại sau gõ (s)", "stay", 0, 10)
+
+local btnHop = Instance.new("TextButton", panel)
+btnHop.Position = UDim2.new(0, 10, 0, 254)
+btnHop.Size = UDim2.new(1, -20, 0, 28)
+btnHop.BorderSizePixel = 0
+btnHop.Font = Enum.Font.GothamBold
+btnHop.TextSize = 12
+btnHop.TextColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", btnHop).CornerRadius = UDim.new(0, 6)
+local function styleHop()
+    btnHop.Text = "HOP KHI HẾT CỬA: " .. (cfg.hopWhenDone and "BẬT" or "TẮT")
+    btnHop.BackgroundColor3 = cfg.hopWhenDone and C_ON or C_BAD
+end
+styleHop()
+btnHop.MouseButton1Click:Connect(function()
+    cfg.hopWhenDone = not cfg.hopWhenDone
+    styleHop()
+    saveConfig()
+end)
 
 -- ---------------- Tiện ích ----------------
 local cancel = false
@@ -286,6 +309,11 @@ local function holdE(sec)
 end
 
 local function doKnock(door)
+    -- Cách chính: giữ E thật (đã test: ăn được)
+    print("[TT] Giữ E thật")
+    holdE(1.5)
+    waitC(0.6)
+    if cancel or not eventActive(door) then return end
     local prompt0 = door:FindFirstChildWhichIsA("ProximityPrompt", true)
         or (door.Parent and door.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
     if prompt0 and fireproximityprompt then
@@ -368,7 +396,107 @@ local function cleanup()
     if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end) end
 end
 
+-- ---------------- Chờ game load xong (màn hình loading) ----------------
+local LOAD_EXTRA = 4   -- chờ thêm sau khi nhân vật xuất hiện (giây)
+local function waitGameReady()
+    setStatus("Đang chờ game load xong...", Color3.fromRGB(255, 200, 0))
+    if not game:IsLoaded() then game.Loaded:Wait() end
+    LocalPlayer:WaitForChild("PlayerGui")
+    while not cancel do
+        local root, hum = getRoot()
+        local folder = getDoorFolder()
+        if root and hum and hum.Health > 0 and folder and #folder:GetChildren() > 0 then break end
+        task.wait(0.5)
+    end
+    setStatus("Đã vào game, chờ ổn định...", Color3.fromRGB(255, 200, 0))
+    waitC(LOAD_EXTRA)
+end
+
+-- ---------------- Hop server ----------------
+local TeleportService = game:GetService("TeleportService")
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+local VISITED_FILE = "TrickTreat_Visited.json"
+local HOP_MAX_PLAYERS = 6
+local joinTick = tick()
+local tpFailed = false
+local visited = {}
+pcall(function()
+    if isfile and readfile and isfile(VISITED_FILE) then
+        visited = HttpService:JSONDecode(readfile(VISITED_FILE))
+    end
+end)
+if type(visited) ~= "table" then visited = {} end
+for id, t in pairs(visited) do
+    if type(t) ~= "number" or os.time() - t > 3600 then visited[id] = nil end
+end
+visited[game.JobId] = os.time()
+local function saveVisited()
+    if writefile then pcall(function() writefile(VISITED_FILE, HttpService:JSONEncode(visited)) end) end
+end
+saveVisited()
+
+TeleportService.TeleportInitFailed:Connect(function() tpFailed = true end)
+
+local function httpGet(url)
+    if httpRequest then
+        local ok, res = pcall(httpRequest, {Url = url, Method = "GET"})
+        if ok and res and res.StatusCode == 200 then return res.Body end
+        return nil
+    end
+    local ok, body = pcall(game.HttpGet, game, url)
+    if ok then return body end
+    return nil
+end
+
+local HOSTS = {"games.roblox.com", "games.roproxy.com"}
+local function fetchServers()
+    for attempt = 1, 4 do
+        local host = HOSTS[(attempt - 1) % #HOSTS + 1]
+        local body = httpGet(("https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(host, game.PlaceId))
+        if body then
+            local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+            if ok and type(data) == "table" and data.data then return data.data end
+        end
+        setStatus(("API bị chặn, thử lại sau 5s (%d/4)..."):format(attempt), Color3.fromRGB(255, 80, 80))
+        waitC(5)
+        if cancel then return nil end
+    end
+    return nil
+end
+
+local function hopServer()
+    while not cancel and env.TTGen == myGen do
+        setStatus("Hết cửa → đang tìm server để hop...", Color3.fromRGB(255, 200, 0))
+        local servers = fetchServers()
+        if servers then
+            local pool, loose = {}, {}
+            for _, s in ipairs(servers) do
+                if s.id ~= game.JobId and not visited[s.id] and s.playing and s.playing < s.maxPlayers then
+                    loose[#loose + 1] = s
+                    if s.playing <= HOP_MAX_PLAYERS then pool[#pool + 1] = s end
+                end
+            end
+            if #pool == 0 then pool = loose end
+            if #pool > 0 then
+                local s = pool[math.random(#pool)]
+                visited[s.id] = os.time()
+                saveVisited()
+                setStatus(("Hop sang server (%d người)..."):format(s.playing), Color3.fromRGB(0, 255, 100))
+                tpFailed = false
+                pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer) end)
+                local t0 = tick()
+                while not cancel and not tpFailed and tick() - t0 < 25 do task.wait(0.2) end
+                if tpFailed then setStatus("Teleport lỗi, thử server khác sau 5s...", Color3.fromRGB(255, 80, 80)) end
+            else
+                setStatus("Không có server phù hợp, thử lại sau 5s...", Color3.fromRGB(255, 80, 80))
+            end
+        end
+        waitC(5)
+    end
+end
+
 local function mainLoop()
+    waitGameReady()
     while not cancel and env.TTGen == myGen do
         local root = getRoot()
         if not root then
@@ -377,6 +505,10 @@ local function mainLoop()
         else
             local list = scanEvents()
             if #list == 0 then
+                if cfg.hopWhenDone and tick() - joinTick > 6 then
+                    hopServer()
+                    if cancel then break end
+                end
                 setStatus("Hết cửa event, chờ cửa mới...", Color3.fromRGB(255, 200, 0))
                 if lastUnderY and root.Position.Y > lastUnderY + 5 then
                     tweenTo(Vector3.new(root.Position.X, lastUnderY, root.Position.Z))
