@@ -36,7 +36,7 @@ local function loadConfig()
     if type(d.enabled) == "boolean" then cfg.enabled = d.enabled end
     if type(d.speed)  == "number" then cfg.speed  = math.clamp(d.speed, 50, 2000) end
     if type(d.depth)  == "number" then cfg.depth  = math.clamp(d.depth, 5, 150) end
-    if type(d.inside) == "number" then cfg.inside = math.clamp(d.inside, 1, 30) end
+    if type(d.inside) == "number" then cfg.inside = math.clamp(d.inside, -10, 30) end
     if type(d.stay)   == "number" then cfg.stay   = math.clamp(d.stay, 0, 10) end
 end
 loadConfig()
@@ -157,7 +157,7 @@ local function mkBox(y, label, key, lo, hi)
 end
 mkBox(138, "Tốc độ tween", "speed", 50, 2000)
 mkBox(166, "Độ sâu dưới đất", "depth", 5, 150)
-mkBox(194, "Chui vào trong (stud)", "inside", 1, 30)
+mkBox(194, "Chui vào trong (stud)", "inside", -10, 30)
 mkBox(222, "Đứng lại sau gõ (s)", "stay", 0, 10)
 
 -- ---------------- Tiện ích ----------------
@@ -287,6 +287,7 @@ end
 
 local function doKnock(door)
     local prompt0 = door:FindFirstChildWhichIsA("ProximityPrompt", true)
+        or (door.Parent and door.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
     if prompt0 and fireproximityprompt then
         local hold = prompt0.HoldDuration
         pcall(function() prompt0.HoldDuration = 0 end)
@@ -303,18 +304,19 @@ local function doKnock(door)
     end)
     if okR and remote then
         task.spawn(function()
+            local rr = getRoot()
+            local dist = rr and math.floor((rr.Position - posOf(door)).Magnitude * 10) / 10
             local ok, res = pcall(function() return remote:InvokeServer(1, door) end)
-            print("[TT] InvokeServer:", ok, res)
+            print("[TT] InvokeServer:", ok, res, "| cách cửa:", dist)
         end)
     end
     waitC(1.2)
     -- Nếu cửa vẫn còn event → thử giữ E / fireproximityprompt
     if not cancel and eventActive(door) then
         local prompt = door:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prompt then
-            if fireproximityprompt then pcall(fireproximityprompt, prompt) end
-            holdE(math.max(prompt.HoldDuration, 0.3) + 0.2)
-        end
+        if prompt and fireproximityprompt then pcall(fireproximityprompt, prompt) end
+        print("[TT] Giữ E thật")
+        holdE(prompt and (math.max(prompt.HoldDuration, 0.3) + 0.2) or 1.5)
     end
 end
 
@@ -487,4 +489,4 @@ task.spawn(function()
     task.wait(2)
     if cfg.enabled then startRun() end
 end)
-print("✅ Đã load Trick or Treat Auto Knock2")
+print("✅ Đã load Trick or Treat Auto Knockaz2")
