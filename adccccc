@@ -495,8 +495,22 @@ local function hopServer()
     end
 end
 
+local retryRounds = 0
+local function countActive()
+    local folder = getDoorFolder()
+    local n = 0
+    if folder then
+        for _, b in ipairs(folder:GetChildren()) do
+            local d = b:FindFirstChild("Door")
+            if d and eventActive(d) then n += 1 end
+        end
+    end
+    return n
+end
+
 local function mainLoop()
     waitGameReady()
+    joinTick = tick()   -- tính thời gian ở server từ lúc load xong, không phải từ lúc chạy script
     while not cancel and env.TTGen == myGen do
         local root = getRoot()
         if not root then
@@ -505,9 +519,19 @@ local function mainLoop()
         else
             local list = scanEvents()
             if #list == 0 then
-                if cfg.hopWhenDone and tick() - joinTick > 6 then
-                    hopServer()
-                    if cancel then break end
+                if cfg.hopWhenDone and tick() - joinTick > 10 then
+                    local act = countActive()
+                    if act > 0 and retryRounds < 2 then
+                        retryRounds += 1
+                        print("[TT] Còn", act, "cửa có billboard nhưng bị đánh dấu → thử lại vòng", retryRounds)
+                        setStatus(("Còn %d cửa chưa gõ được → thử lại (%d/2)"):format(act, retryRounds), Color3.fromRGB(255, 200, 0))
+                        for k in pairs(done) do done[k] = nil end
+                        for k in pairs(tries) do tries[k] = nil end
+                    else
+                        print("[TT] Hop server. Billboard còn lại:", act)
+                        hopServer()
+                        if cancel then break end
+                    end
                 end
                 setStatus("Hết cửa event, chờ cửa mới...", Color3.fromRGB(255, 200, 0))
                 if lastUnderY and root.Position.Y > lastUnderY + 5 then
