@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX AUTO REPLAY & UI)
+-- TUANH HUB - ALL IN ONE (FIX LỖI MISS UPGRADE & SLOT)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -75,7 +75,7 @@ end
 
 -- ================= GHI MACRO =================
 local function push(t, f) f.t = t; f.w = T.wave; f.dt = math.floor(T.waveElapsed() * 100) / 100; table.insert(T.rec, f) end
-local function slotOf(inst) if typeof(inst) ~= "Instance" then return nil end for n, s in pairs(T.slots) do if s.inst == inst then return n end end local p = T.pivotPos(inst) if p then for n, s in pairs(T.slots) do if not s.inst and T.flat(p, s.pos) < 3 then s.inst = inst; return n end end end return nil end
+local function slotOf(inst) if typeof(inst) ~= "Instance" then return nil end for n, s in pairs(T.slots) do if s.inst == inst then return n end end return nil end
 
 function T.startRec() T.rec, T.slots, T.nextSlot = {}, {}, 1 T.recording = true T.status("Đang ghi...") end
 function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " hành động") end
@@ -83,16 +83,42 @@ function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " 
 function T.onCall(name, args, res)
     if name == "vote_start" then T.resetWave(); return end
     if not T.recording or res[1] == false then return end
+
     if name == "spawn_unit" then
         local id, cf = args[1], args[2]
         if typeof(cf) ~= "CFrame" then return end
-        local n = T.nextSlot; T.nextSlot = n + 1; T.slots[n] = { pos = cf.Position }
-        push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
-        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, T.mappedSet(), 4)
-        if inst then T.slots[n].inst = inst end
-    elseif name == "upgrade_unit_ingame" then local n = slotOf(args[1]); if n then push("upgrade", { slot = n }) end
-    elseif name == "sell_unit_ingame" then local n = slotOf(args[1]); if n then push("sell", { slot = n }) end
-    elseif name == "set_game_finished_vote" then if args[1] == "replay" then sendWebhook() end end
+        
+        -- Đợi tìm Instance thật của con quân vừa đặt
+        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, T.mappedSet(), 3)
+        
+        if inst then
+            local n = T.nextSlot
+            T.nextSlot = n + 1
+            T.slots[n] = { pos = cf.Position, inst = inst }
+            push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
+            T.status(("Ghi #%d: Đặt Slot %d"):format(#T.rec, n))
+        else
+            T.status("Bỏ qua đặt quân: Không lấy được Instance")
+        end
+    elseif name == "upgrade_unit_ingame" then
+        local n = slotOf(args[1])
+        if n then
+            local pos = T.pivotPos(args[1])
+            push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z} })
+            T.status(("Ghi #%d: Nâng cấp Slot %d"):format(#T.rec, n))
+        else
+            T.status("Bỏ qua nâng cấp: Không tìm thấy Slot (bán rồi?)")
+        end
+    elseif name == "sell_unit_ingame" then
+        local n = slotOf(args[1])
+        if n then 
+            push("sell", { slot = n })
+            T.status(("Ghi #%d: Bán Slot %d"):format(#T.rec, n))
+            T.slots[n] = nil -- Xóa bộ nhớ Slot khi bán
+        end
+    elseif name == "set_game_finished_vote" then
+        if args[1] == "replay" then sendWebhook() end
+    end
 end
 
 if hookmetamethod and newcclosure and checkcaller and getnamecallmethod then
@@ -121,14 +147,22 @@ local function runAction(a, slots, tries)
         local cf = CFrame.new(table.unpack(a.cf))
         if tries > 1 then local ex = T.findUnitAt(cf.Position, T.mappedSet(slots), 0) if ex then slots[a.slot] = ex; return true end end
         local ok, res = T.invoke("spawn_unit", a.id, cf); if not ok or res == false then return false end
-        local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, T.mappedSet(slots), 3)
+        local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, T.mappedSet(slots), 4)
         if not inst then return false end; slots[a.slot] = inst; return true
     elseif a.t == "upgrade" then
-        local inst = slots[a.slot]; if not inst or not inst.Parent then return true end
-        task.wait(0.15); local ok, res = T.invoke("upgrade_unit_ingame", inst); return ok and res ~= false
+        local inst = slots[a.slot]
+        -- Nếu Instance bị mất (do ván mới), tìm lại bằng tọa độ
+        if (not inst or not inst.Parent) and a.pos then
+            local targetPos = Vector3.new(a.pos[1], a.pos[2], a.pos[3])
+            inst = T.findUnitAt(targetPos, T.mappedSet(slots), 1)
+            if inst then slots[a.slot] = inst end
+        end
+        if not inst or not inst.Parent then return true end
+        task.wait(0.2) -- Đợi 0.2 giây để Server xử lý xong lệnh trước
+        local ok, res = T.invoke("upgrade_unit_ingame", inst); return ok and res ~= false
     elseif a.t == "sell" then
         local inst = slots[a.slot]; if not inst or not inst.Parent then return true end
-        task.wait(0.15); local ok, res = T.invoke("sell_unit_ingame", inst); slots[a.slot] = nil; return ok and res ~= false
+        task.wait(0.2); local ok, res = T.invoke("sell_unit_ingame", inst); slots[a.slot] = nil; return ok and res ~= false
     end
     return true
 end
@@ -172,6 +206,7 @@ task.spawn(function()
         if T.dead then break end
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         
+        -- Auto Vote Yes
         if T.settings.autoStart then
             local voteStart = pg and pg:FindFirstChild("VoteStart")
             if voteStart then
@@ -195,56 +230,42 @@ task.spawn(function()
             else voted = false end
         end
         
-        -- AUTO REPLAY BẰNG VIM
+        -- Auto Replay
         if T.settings.autoReplay then
-            -- Quét tìm nút Replay trong toàn bộ màn hình
             for _, gui in ipairs(pg:GetDescendants()) do
                 if gui:IsA("TextButton") and (string.lower(gui.Text):find("replay") or string.lower(gui.Text):find("play again")) then
-                    -- Kiểm tra xem nút có hiển thị không
                     local isVisible = true
                     local p = gui
                     while p and p ~= pg do
                         if p:IsA("GuiObject") and not p.Visible then isVisible = false; break end
                         p = p.Parent
                     end
-                    
-                    if isVisible then
-                        if not replayed then
-                            print("🔄 Tìm thấy nút Replay, đang tự động bấm...")
-                            local pos = gui.AbsolutePosition + (gui.AbsoluteSize / 2)
-                            local inset = GuiService:GetGuiInset()
-                            pcall(function()
-                                VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
-                                task.wait(0.05)
-                                VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
-                                task.wait(0.05)
-                                VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
-                            end)
-                            replayed = true
-                            sendWebhook() -- Gửi webhook khi retry
-                            break
-                        end
+                    if isVisible and not replayed then
+                        local pos = gui.AbsolutePosition + (gui.AbsoluteSize / 2)
+                        local inset = GuiService:GetGuiInset()
+                        pcall(function()
+                            VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
+                            task.wait(0.05)
+                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
+                            task.wait(0.05)
+                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
+                        end)
+                        replayed = true
+                        sendWebhook()
+                        break
                     end
                 end
             end
         end
         
-        -- Reset biến khi qua map mới
-        if not workspace:FindFirstChild("_UNITS") then
-            replayed = false
-        end
+        if not workspace:FindFirstChild("_UNITS") then replayed = false end
     end
 end)
 
 T.onEvent("game_finished", function()
     T.stopPlay()
-    -- Cố gắng invoke như một phương án dự phòng, nhưng VIM ở trên mới là chính
     if T.settings.autoReplay and not T.dead then
-        task.delay(2, function() 
-            if not T.dead and not replayed then 
-                T.invoke("set_game_finished_vote", "replay") 
-            end 
-        end)
+        task.delay(2, function() if not T.dead and not replayed then T.invoke("set_game_finished_vote", "replay") end end)
     end
 end)
 
@@ -300,27 +321,10 @@ local function btn(p, text, i, n, cb) local b = mk("TextButton", { Text = text, 
 
 T.statusLbl = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Text = "Sẵn sàng", TextWrapped = true, TextColor3 = Color3.fromRGB(190, 220, 255), Font = Enum.Font.SourceSans, TextSize = 14, LayoutOrder = 0 }, body)
 
--- Webhook Input (Đã fix UI gọn gàng)
-local webhookBox = mk("TextBox", { 
-    Size = UDim2.new(1, 0, 0, 28), 
-    LayoutOrder = order + 1, 
-    PlaceholderText = "Nhập Discord Webhook URL", 
-    Text = T.settings.webhook or "", 
-    BackgroundColor3 = Color3.fromRGB(40, 40, 52), 
-    TextColor3 = Color3.new(1, 1, 1), 
-    PlaceholderColor3 = Color3.fromRGB(140, 140, 150), 
-    Font = Enum.Font.SourceSans, 
-    TextSize = 14, 
-    ClearTextOnFocus = false,
-    TextTruncate = Enum.TextTruncate.AtEnd -- FIX LỖI TRÀN CHỮ
-}, body)
+local webhookBox = mk("TextBox", { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = order + 1, PlaceholderText = "Nhập Discord Webhook URL", Text = T.settings.webhook or "", BackgroundColor3 = Color3.fromRGB(40, 40, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(140, 140, 150), Font = Enum.Font.SourceSans, TextSize = 14, ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd }, body)
 order = order + 1; webhookBox.LayoutOrder = order
 mk("UICorner", { CornerRadius = UDim.new(0, 6) }, webhookBox)
-webhookBox.FocusLost:Connect(function()
-    T.settings.webhook = webhookBox.Text
-    T.saveSettings()
-    T.status("Đã lưu Webhook!")
-end)
+webhookBox.FocusLost:Connect(function() T.settings.webhook = webhookBox.Text T.saveSettings() T.status("Đã lưu Webhook!") end)
 
 local list, idx = {}, 0
 local cfgRow = row(30)
@@ -358,21 +362,14 @@ btn(r2, "Chạy", 1, 3, function()
         for _, child in ipairs(body:GetChildren()) do
             if child:IsA("TextButton") and child.Text:find("Auto") then
                 local key = child.Text:match("Auto (%w+)")
-                if key then
-                    key = string.lower(key:sub(1,1)) .. key:sub(2)
-                    child.Text = "Auto " .. key:sub(1,1):upper() .. key:sub(2) .. ": " .. (T.settings[key] and "BẬT" or "TẮT")
-                    child.BackgroundColor3 = T.settings[key] and ON or OFF
-                end
+                if key then key = string.lower(key:sub(1,1)) .. key:sub(2) child.Text = "Auto " .. key:sub(1,1):upper() .. key:sub(2) .. ": " .. (T.settings[key] and "BẬT" or "TẮT") child.BackgroundColor3 = T.settings[key] and ON or OFF end
             end
         end
     end
     T.play(cfg)
 end)
 btn(r2, "Dừng", 2, 3, function() T.stopPlay() end)
-btn(r2, "Xóa", 3, 3, function()
-    if T.settings.selected == "" then return end
-    T.deleteConfig(T.settings.selected) T.status("Đã xóa: " .. T.settings.selected) T.settings.selected = "" T.saveSettings() refresh()
-end)
+btn(r2, "Xóa", 3, 3, function() if T.settings.selected == "" then return end T.deleteConfig(T.settings.selected) T.status("Đã xóa: " .. T.settings.selected) T.settings.selected = "" T.saveSettings() refresh() end)
 
 local function toggle(label, key)
     local b
