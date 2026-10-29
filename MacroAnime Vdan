@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE MACRO & WEBHOOK (BẢN FULL)
+-- TUANH HUB - ALL IN ONE MACRO & WEBHOOK (BẢN FIX LỖI MISS UPGRADE)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -83,11 +83,20 @@ function T.onEvent(name, fn) local e = S2C and S2C:FindFirstChild(name) if e the
 function T.pivotPos(i) local ok, cf = pcall(function() return i:GetPivot() end) if ok then return cf.Position end return nil end
 function T.flat(a, b) return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude end
 function T.mappedSet(map) local s = {} for _, v in pairs(map or T.slots) do if typeof(v) == "Instance" then s[v] = true elseif type(v) == "table" and v.inst then s[v.inst] = true end end return s end
+
+-- Giảm bán kính tìm kiếm xuống 2 studs để tránh nhầm lẫn
 function T.findUnitAt(pos, exclude, timeout)
     local t0 = os.clock()
     repeat
         local f = workspace:FindFirstChild("_UNITS")
-        if f then for _, u in ipairs(f:GetChildren()) do if not exclude[u] then local p = T.pivotPos(u) if p and T.flat(p, pos) < 3 then return u end end end end
+        if f then 
+            for _, u in ipairs(f:GetChildren()) do 
+                if not exclude[u] then 
+                    local p = T.pivotPos(u) 
+                    if p and T.flat(p, pos) < 2 then return u end 
+                end 
+            end 
+        end
         task.wait(0.15)
     until os.clock() - t0 >= (timeout or 4)
     return nil
@@ -105,7 +114,6 @@ local function sendWebhook()
     local gold = stats and stats:FindFirstChild("gold_amount") and stats.gold_amount.Value or "N/A"
     local xp = stats and stats:FindFirstChild("player_xp") and stats.player_xp.Value or "N/A"
     
-    -- Lấy tên Map (cố gắng tìm trong workspace hoặc dùng PlaceId)
     local mapName = "Unknown Map"
     local mapGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("MapName")
     if mapGui and mapGui:IsA("TextLabel") then mapName = mapGui.Text end
@@ -192,9 +200,11 @@ local function runAction(a, slots, tries)
         if not inst then return false end; slots[a.slot] = inst; return true
     elseif a.t == "upgrade" then
         local inst = slots[a.slot]; if not inst or not inst.Parent then return true end
+        task.wait(0.15) -- Delay để tránh nghẽn Server
         local ok, res = T.invoke("upgrade_unit_ingame", inst); return ok and res ~= false
     elseif a.t == "sell" then
         local inst = slots[a.slot]; if not inst or not inst.Parent then return true end
+        task.wait(0.15) -- Delay để tránh nghẽn Server
         local ok, res = T.invoke("sell_unit_ingame", inst); slots[a.slot] = nil; return ok and res ~= false
     end
     return true
@@ -219,6 +229,7 @@ function T.play(cfg)
                 task.wait(1.2)
             end
             if T.playToken ~= token then return end
+            task.wait(0.1) -- QUAN TRỌNG: Nghỉ 0.1s sau mỗi hành động để Server kịp xử lý
         end
         if T.playToken == token then T.playing = false; T.status("Macro xong") end
     end)
@@ -318,7 +329,6 @@ local function btn(p, text, i, n, cb) local b = mk("TextButton", { Text = text, 
 
 T.statusLbl = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Text = "Sẵn sàng", TextWrapped = true, TextColor3 = Color3.fromRGB(190, 220, 255), Font = Enum.Font.SourceSans, TextSize = 14, LayoutOrder = 0 }, body)
 
--- Webhook Input
 local webhookBox = mk("TextBox", { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = order + 1, PlaceholderText = "Nhập Discord Webhook URL", Text = T.settings.webhook or "", BackgroundColor3 = Color3.fromRGB(40, 40, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(140, 140, 150), Font = Enum.Font.SourceSans, TextSize = 14, ClearTextOnFocus = false }, body)
 order = order + 1; webhookBox.LayoutOrder = order
 mk("UICorner", { CornerRadius = UDim.new(0, 6) }, webhookBox)
@@ -328,7 +338,6 @@ webhookBox.FocusLost:Connect(function()
     T.status("Đã lưu Webhook!")
 end)
 
--- Chọn Config
 local list, idx = {}, 0
 local cfgRow = row(30)
 local nameLbl = mk("TextLabel", { Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.new(0.2, 0, 0, 0), BackgroundColor3 = Color3.fromRGB(40, 40, 52), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.SourceSansBold, TextSize = 15, Text = "", TextTruncate = Enum.TextTruncate.AtEnd }, cfgRow)
@@ -339,12 +348,10 @@ local function pick(d) if #list == 0 then return end idx = ((idx - 1 + d) % #lis
 local prev = btn(cfgRow, "<", 1, 1, function() pick(-1) end) prev.Size = UDim2.new(0.2, -4, 1, 0)
 local nxt = btn(cfgRow, ">", 1, 1, function() pick(1) end) nxt.Size = UDim2.new(0.2, -4, 1, 0) nxt.Position = UDim2.new(0.8, 4, 0, 0)
 
--- TextBox Lưu Tên
 local box = mk("TextBox", { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = order + 1, PlaceholderText = "Tên config mới (vd: map1)", Text = "", BackgroundColor3 = Color3.fromRGB(40, 40, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(140, 140, 150), Font = Enum.Font.SourceSans, TextSize = 15, ClearTextOnFocus = false }, body)
 order = order + 1; box.LayoutOrder = order
 mk("UICorner", { CornerRadius = UDim.new(0, 6) }, box)
 
--- Nút Ghi / Lưu
 local r1 = row(32)
 btn(r1, "Ghi", 1, 3, function() T.startRec() end)
 btn(r1, "Dừng ghi", 2, 3, function() T.stopRec() end)
@@ -354,7 +361,6 @@ btn(r1, "Lưu", 3, 3, function()
     local name = box.Text
     if T.cleanName(name) == "" then name = "macro_" .. os.date("%H%M%S") end
     
-    -- LƯU KÈM TRẠNG THÁI AUTO
     local saveData = { 
         version = 1, 
         created = os.time(), 
@@ -379,19 +385,16 @@ btn(r1, "Lưu", 3, 3, function()
     end
 end)
 
--- Nút Chạy / Xóa
 local r2 = row(32)
 btn(r2, "Chạy", 1, 3, function()
     local cfg = (T.settings.selected ~= "") and T.loadConfig(T.settings.selected) or nil
     if not cfg then T.status("Chưa chọn config"); return end
     
-    -- PHỤC HỒI TRẠNG THÁI AUTO TỪ CONFIG
     if cfg.settings then
         T.settings.autoStart = cfg.settings.autoStart
         T.settings.autoReplay = cfg.settings.autoReplay
         T.settings.autoSkip = cfg.settings.autoSkip
         T.settings.autoPlay = cfg.settings.autoPlay
-        -- Cập nhật lại UI
         for _, child in ipairs(body:GetChildren()) do
             if child:IsA("TextButton") and child.Text:find("Auto") then
                 local key = child.Text:match("Auto (%w+)")
@@ -412,7 +415,6 @@ btn(r2, "Xóa", 3, 3, function()
     T.deleteConfig(T.settings.selected) T.status("Đã xóa: " .. T.settings.selected) T.settings.selected = "" T.saveSettings() refresh()
 end)
 
--- Toggles
 local function toggle(label, key)
     local b
     local function paint() b.Text = label .. ": " .. (T.settings[key] and "BẬT" or "TẮT") b.BackgroundColor3 = T.settings[key] and ON or OFF end
