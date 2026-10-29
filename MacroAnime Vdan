@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX LỖI NÂNG CẤP NHẦM CON KHI ĐỨNG GẦN)
+-- TUANH HUB - ALL IN ONE (FIX WEBHOOK)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -47,12 +47,11 @@ T.loadSettings()
 function T.invoke(name, ...) local r = C2S and C2S:FindFirstChild(name) if not r then return false, nil end local args = table.pack(...) local ok, res = pcall(function() return r:InvokeServer(table.unpack(args, 1, args.n)) end) return ok, res end
 function T.onEvent(name, fn) local e = S2C and S2C:FindFirstChild(name) if e then table.insert(T.conns, e.OnClientEvent:Connect(fn)) end end
 
--- ================= HELPER (THUẬT TOÁN TÌM QUÂN CHÍNH XÁC) =================
+-- ================= HELPER =================
 function T.pivotPos(i) local ok, cf = pcall(function() return i:GetPivot() end) if ok then return cf.Position end return nil end
 function T.flat(a, b) return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude end
 function T.mappedSet(map) local s = {} for _, v in pairs(map or T.slots) do if typeof(v) == "Instance" then s[v] = true elseif type(v) == "table" and v.inst then s[v.inst] = true end end return s end
 
--- Tìm con quân GẦN NHẤT và có TÊN TRÙNG KHỚP
 function T.findUnitAt(pos, nameFilter, exclude, timeout) 
     local t0 = os.clock() 
     repeat 
@@ -69,7 +68,7 @@ function T.findUnitAt(pos, nameFilter, exclude, timeout)
                         local p = T.pivotPos(u) 
                         if p then
                             local d = T.flat(p, pos)
-                            if d < minDist and d < 10 then -- Bán kính 10 studs
+                            if d < minDist and d < 15 then -- Tăng lên 15 studs
                                 minDist = d
                                 closestUnit = u
                             end
@@ -87,51 +86,74 @@ end
 function T.resetWave() T.wave = 1; T.waveStart = os.clock() end
 function T.waveElapsed() return os.clock() - T.waveStart end
 
--- ================= WEBHOOK =================
+-- ================= WEBHOOK (FIXED) =================
+local lastWebhookTime = 0
 local function sendWebhook()
     local url = T.settings.webhook
     if not url or url == "" then return end
+    if tick() - lastWebhookTime < 5 then return end -- Chống spam gửi 2 lần
+    lastWebhookTime = tick()
+    
     local stats = LocalPlayer:FindFirstChild("_stats")
-    local gem = stats and stats:FindFirstChild("gem_amount") and stats.gem_amount.Value or "N/A"
-    local gold = stats and stats:FindFirstChild("gold_amount") and stats.gold_amount.Value or "N/A"
-    local xp = stats and stats:FindFirstChild("player_xp") and stats.player_xp.Value or "N/A"
-    local mapName = "Unknown Map"
-    local mapGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("MapName")
-    if mapGui and mapGui:IsA("TextLabel") then mapName = mapGui.Text end
+    local gem, gold, xp = "N/A", "N/A", "N/A"
+    if stats then
+        if stats:FindFirstChild("gem_amount") then gem = tostring(stats.gem_amount.Value) end
+        if stats:FindFirstChild("gold_amount") then gold = tostring(stats.gold_amount.Value) end
+        if stats:FindFirstChild("player_xp") then xp = tostring(stats.player_xp.Value) end
+    end
+    
+    local mapName = "Unknown"
+    local mapGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if mapGui then
+        for _, v in ipairs(mapGui:GetDescendants()) do
+            if v:IsA("TextLabel") and (string.lower(v.Name):find("map") or string.lower(v.Name):find("title")) and v.Text ~= "" then
+                mapName = v.Text
+                break
+            end
+        end
+    end
     
     local body = HttpService:JSONEncode({
-        content = string.format("🔄 **Retry Map Detected!**\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", LocalPlayer.UserId, mapName, tostring(gem), tostring(gold), tostring(xp))
+        content = string.format("🔄 **Retry Map Detected!**\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", LocalPlayer.UserId, mapName, gem, gold, xp)
     })
-    task.spawn(function() pcall(function() HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson) end) end)
+    
+    task.spawn(function()
+        local ok, err = pcall(function()
+            if request then
+                request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            elseif syn and syn.request then
+                syn.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            elseif http and http.request then
+                http.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            else
+                HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson)
+            end
+        end)
+        if ok then
+            print("✅ [Webhook] Đã gửi thông báo thành công!")
+            if T.statusLbl then T.statusLbl.Text = "Đã gửi Webhook!" end
+        else
+            print("❌ [Webhook] Lỗi khi gửi:", err)
+            if T.statusLbl then T.statusLbl.Text = "Webhook Error!" end
+        end
+    end)
 end
 
--- ================= GHI MACRO (FIX NHẬN DIỆN SLOT) =================
+-- ================= GHI MACRO =================
 local function push(t, f) f.t = t; f.w = T.wave; f.dt = math.floor(T.waveElapsed() * 100) / 100; table.insert(T.rec, f) end
-
--- Hàm này sẽ gán Instance chính xác vào Slot
 local function slotOf(inst) 
     if typeof(inst) ~= "Instance" then return nil end 
-    
-    -- 1. Nếu đã gán chính xác rồi
     for n, s in pairs(T.slots) do if s.inst == inst then return n end end 
-    
-    -- 2. Nếu chưa gán, tìm Slot chưa có Inst và gần nhất (bán kính 15 studs)
     local p = T.pivotPos(inst) 
     if p then 
         local bestSlot, minDist
         for n, s in pairs(T.slots) do 
             if not s.inst then 
                 local d = T.flat(p, s.pos)
-                if not minDist or d < minDist then
-                    minDist = d
-                    bestSlot = n
-                end
+                if not minDist or d < minDist then minDist = d bestSlot = n end
             end 
         end 
-        if bestSlot and minDist < 15 then 
-            T.slots[bestSlot].inst = inst 
-            return bestSlot 
-        end
+        if bestSlot and minDist < 15 then T.slots[bestSlot].inst = inst return bestSlot end
     end 
     return nil 
 end
@@ -141,48 +163,33 @@ function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " 
 
 function T.onCall(name, args, res)
     if name == "vote_start" then T.resetWave(); return end
+    
+    -- ĐÃ CHUYỂN LÊN ĐÂY ĐỂ BẮT WEBHOOK KỂ CẢ KHI KHÔNG GHI
+    if name == "set_game_finished_vote" then
+        if args[1] == "replay" then 
+            print("🔥 [Webhook] Bắt được tín hiệu Retry Map từ Server!")
+            sendWebhook() 
+        end
+    end
+
     if not T.recording or res[1] == false then return end
 
     if name == "spawn_unit" then
         local id, cf = args[1], args[2]
         if typeof(cf) ~= "CFrame" then return end
-        
-        local n = T.nextSlot
-        T.nextSlot = n + 1
-        T.slots[n] = { pos = cf.Position }
+        local n = T.nextSlot; T.nextSlot = n + 1; T.slots[n] = { pos = cf.Position }
         push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
-        
-        -- Đợi game sinh ra quân rồi tìm chính xác
         local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, nil, T.mappedSet(), 4)
-        if inst then 
-            T.slots[n].inst = inst 
-            T.slots[n].name = inst.Name
-            T.status(("Ghi #%d: Đặt Slot %d (%s)"):format(#T.rec, n, inst.Name))
-        else
-            T.status(("Ghi #%d: Đặt Slot %d (Chưa map được)"):format(#T.rec, n))
-        end
+        if inst then T.slots[n].inst = inst T.slots[n].name = inst.Name end
     elseif name == "upgrade_unit_ingame" then
         local inst = args[1]
         local n = slotOf(inst)
         local pos = T.pivotPos(inst)
-        local name = inst.Name
-        
-        if n then
-            push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z}, name = name })
-            T.status(("Ghi #%d: Nâng cấp Slot %d"):format(#T.rec, n))
-        else
-            push("upgrade", { slot = -1, pos = {pos.X, pos.Y, pos.Z}, name = name })
-            T.status(("Ghi #%d: Nâng cấp theo Tọa độ"):format(#T.rec))
-        end
+        if n then push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z}, name = inst.Name })
+        else push("upgrade", { slot = -1, pos = {pos.X, pos.Y, pos.Z}, name = inst.Name }) end
     elseif name == "sell_unit_ingame" then
         local n = slotOf(args[1])
-        if n then 
-            push("sell", { slot = n })
-            T.status(("Ghi #%d: Bán Slot %d"):format(#T.rec, n))
-            T.slots[n] = nil
-        end
-    elseif name == "set_game_finished_vote" then
-        if args[1] == "replay" then sendWebhook() end
+        if n then push("sell", { slot = n }) T.slots[n] = nil end
     end
 end
 
@@ -206,57 +213,29 @@ if hookmetamethod and newcclosure and checkcaller and getnamecallmethod then
     end
 end
 
--- ================= PHÁT LẠI (FIX LOGIC CHỌN QUÂN) =================
+-- ================= PHÁT LẠI =================
 local function runAction(a, slots, tries)
     if a.t == "spawn" then
         local cf = CFrame.new(table.unpack(a.cf))
         slots[a.slot] = { pos = cf.Position } 
-        
-        if tries > 1 then 
-            local ex = T.findUnitAt(cf.Position, nil, T.mappedSet(slots), 0) 
-            if ex then slots[a.slot].inst = ex; return true end 
-        end
-        
-        local ok, res = T.invoke("spawn_unit", a.id, cf)
-        if not ok or res == false then return false end
-        
+        if tries > 1 then local ex = T.findUnitAt(cf.Position, nil, T.mappedSet(slots), 0) if ex then slots[a.slot].inst = ex; return true end end
+        local ok, res = T.invoke("spawn_unit", a.id, cf); if not ok or res == false then return false end
         local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, nil, T.mappedSet(slots), 4)
-        if not inst then return false end
-        
-        slots[a.slot].inst = inst
-        return true
+        if not inst then return false end; slots[a.slot].inst = inst; return true
     elseif a.t == "upgrade" then
         local inst = nil
-        if a.slot ~= -1 and slots[a.slot] then
-            inst = slots[a.slot].inst or slots[a.slot]
-        end
-        
-        -- Nếu mất instance, tìm lại CHÍNH XÁC bằng Tên + Tọa độ
+        if a.slot ~= -1 and slots[a.slot] then inst = slots[a.slot].inst or slots[a.slot] end
         if (not inst or not inst.Parent) and a.pos then
             local targetPos = Vector3.new(a.pos[1], a.pos[2], a.pos[3])
             inst = T.findUnitAt(targetPos, a.name, T.mappedSet(slots), 1)
         end
-        
-        if not inst or not inst.Parent then 
-            T.status("Bỏ qua: Không tìm thấy Unit " .. tostring(a.name))
-            return true 
-        end
-        
-        task.wait(0.2) -- Delay chống nghẽn Server
-        local ok, res = T.invoke("upgrade_unit_ingame", inst)
-        return ok and res ~= false
+        if not inst or not inst.Parent then return true end
+        task.wait(0.2); local ok, res = T.invoke("upgrade_unit_ingame", inst); return ok and res ~= false
     elseif a.t == "sell" then
         local inst = nil
-        if a.slot ~= -1 and slots[a.slot] then
-            inst = slots[a.slot].inst or slots[a.slot]
-        end
-        
+        if a.slot ~= -1 and slots[a.slot] then inst = slots[a.slot].inst or slots[a.slot] end
         if not inst or not inst.Parent then return true end
-        
-        task.wait(0.2)
-        local ok, res = T.invoke("sell_unit_ingame", inst)
-        if a.slot ~= -1 then slots[a.slot] = nil end
-        return ok and res ~= false
+        task.wait(0.2); local ok, res = T.invoke("sell_unit_ingame", inst); if a.slot ~= -1 then slots[a.slot] = nil end; return ok and res ~= false
     end
     return true
 end
@@ -291,7 +270,7 @@ T.onEvent("show_message", function(_, _, code) if code == "WAVE_COMPLETED" then 
 T.onEvent("replay_started", function() T.resetWave() end)
 T.onEvent("start_vote_wave_skip", function() if T.settings.autoSkip and not T.dead then task.delay(0.3, function() T.invoke("vote_wave_skip") end) end end)
 
--- VÒNG LẶP TỰ ĐỘNG BẤM NÚT (VOTE YES & REPLAY)
+-- VÒNG LẶP TỰ ĐỘNG BẤM NÚT
 local voted = false
 local replayed = false
 
@@ -333,6 +312,7 @@ task.spawn(function()
                         p = p.Parent
                     end
                     if isVisible and not replayed then
+                        print("🔥 [VIM] Tìm thấy nút Replay, đang bấm...")
                         local pos = gui.AbsolutePosition + (gui.AbsoluteSize / 2)
                         local inset = GuiService:GetGuiInset()
                         pcall(function()
@@ -343,13 +323,12 @@ task.spawn(function()
                             VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
                         end)
                         replayed = true
-                        sendWebhook()
+                        sendWebhook() -- Gửi Webhook ở đây
                         break
                     end
                 end
             end
         end
-        
         if not workspace:FindFirstChild("_UNITS") then replayed = false end
     end
 end)
