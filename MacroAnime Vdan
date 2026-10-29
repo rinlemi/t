@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX WEBHOOK)
+-- TUANH HUB - ALL IN ONE (FIX WEBHOOK STARTUP & RETRY)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -68,7 +68,7 @@ function T.findUnitAt(pos, nameFilter, exclude, timeout)
                         local p = T.pivotPos(u) 
                         if p then
                             local d = T.flat(p, pos)
-                            if d < minDist and d < 15 then -- Tăng lên 15 studs
+                            if d < minDist and d < 15 then 
                                 minDist = d
                                 closestUnit = u
                             end
@@ -86,14 +86,11 @@ end
 function T.resetWave() T.wave = 1; T.waveStart = os.clock() end
 function T.waveElapsed() return os.clock() - T.waveStart end
 
--- ================= WEBHOOK (FIXED) =================
+-- ================= WEBHOOK (FIXED DELTA SUPPORT) =================
 local lastWebhookTime = 0
-local function sendWebhook()
-    local url = T.settings.webhook
-    if not url or url == "" then return end
-    if tick() - lastWebhookTime < 5 then return end -- Chống spam gửi 2 lần
-    lastWebhookTime = tick()
-    
+
+-- Hàm lấy dữ liệu
+local function getStatsData()
     local stats = LocalPlayer:FindFirstChild("_stats")
     local gem, gold, xp = "N/A", "N/A", "N/A"
     if stats then
@@ -112,13 +109,26 @@ local function sendWebhook()
             end
         end
     end
+    return mapName, gem, gold, xp
+end
+
+-- Hàm gửi (Bắt buộc dùng request của Executor)
+local function sendWebhook(reason)
+    local url = T.settings.webhook
+    if not url or url == "" then return end
+    if tick() - lastWebhookTime < 5 then return end -- Chống spam gửi 2 lần
+    lastWebhookTime = tick()
     
+    local mapName, gem, gold, xp = getStatsData()
+    
+    local title = reason == "Load" and "🚀 **Script Loaded!**" or "🔄 **Retry Map Detected!**"
     local body = HttpService:JSONEncode({
-        content = string.format("🔄 **Retry Map Detected!**\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", LocalPlayer.UserId, mapName, gem, gold, xp)
+        content = string.format("%s\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", title, LocalPlayer.UserId, mapName, gem, gold, xp)
     })
     
     task.spawn(function()
         local ok, err = pcall(function()
+            -- Ưu tiên dùng request của Executor
             if request then
                 request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
             elseif syn and syn.request then
@@ -130,10 +140,10 @@ local function sendWebhook()
             end
         end)
         if ok then
-            print("✅ [Webhook] Đã gửi thông báo thành công!")
-            if T.statusLbl then T.statusLbl.Text = "Đã gửi Webhook!" end
+            print("✅ [Webhook] Gửi thành công ("..reason..")!")
+            if T.statusLbl then T.statusLbl.Text = "Đã gửi Webhook "..reason end
         else
-            print("❌ [Webhook] Lỗi khi gửi:", err)
+            print("❌ [Webhook] Lỗi:", err)
             if T.statusLbl then T.statusLbl.Text = "Webhook Error!" end
         end
     end)
@@ -164,11 +174,10 @@ function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " 
 function T.onCall(name, args, res)
     if name == "vote_start" then T.resetWave(); return end
     
-    -- ĐÃ CHUYỂN LÊN ĐÂY ĐỂ BẮT WEBHOOK KỂ CẢ KHI KHÔNG GHI
     if name == "set_game_finished_vote" then
         if args[1] == "replay" then 
             print("🔥 [Webhook] Bắt được tín hiệu Retry Map từ Server!")
-            sendWebhook() 
+            sendWebhook("Retry") 
         end
     end
 
@@ -323,7 +332,7 @@ task.spawn(function()
                             VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
                         end)
                         replayed = true
-                        sendWebhook() -- Gửi Webhook ở đây
+                        sendWebhook("Retry") 
                         break
                     end
                 end
@@ -395,7 +404,12 @@ T.statusLbl = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 36), BackgroundTranspa
 local webhookBox = mk("TextBox", { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = order + 1, PlaceholderText = "Nhập Discord Webhook URL", Text = T.settings.webhook or "", BackgroundColor3 = Color3.fromRGB(40, 40, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(140, 140, 150), Font = Enum.Font.SourceSans, TextSize = 14, ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd }, body)
 order = order + 1; webhookBox.LayoutOrder = order
 mk("UICorner", { CornerRadius = UDim.new(0, 6) }, webhookBox)
-webhookBox.FocusLost:Connect(function() T.settings.webhook = webhookBox.Text T.saveSettings() T.status("Đã lưu Webhook!") end)
+webhookBox.FocusLost:Connect(function() 
+    T.settings.webhook = webhookBox.Text 
+    T.saveSettings() 
+    T.status("Đã lưu Webhook!") 
+    sendWebhook("Load") -- Gửi test ngay khi nhập xong link
+end)
 
 local list, idx = {}, 0
 local cfgRow = row(30)
@@ -454,4 +468,12 @@ toggle("Auto Skip Wave", "autoSkip")
 toggle("Auto chạy config", "autoPlay")
 
 refresh()
+
+-- ================= GỬI WEBHOOK KHỞI ĐỘNG =================
+-- Đợi 1 chút để UI load xong và kịp lấy dữ liệu, sau đó gửi Webhook báo hiệu đã bật Script
+task.delay(3, function()
+    print("🚀 [Webhook] Đang gửi thông báo khởi động...")
+    sendWebhook("Load")
+end)
+
 T.status("Tuanh Hub Loaded!")
