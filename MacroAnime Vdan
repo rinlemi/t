@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX LỖI MISS UPGRADE & SLOT)
+-- TUANH HUB - ALL IN ONE (FIX LỖI MISS UPGRADE CON TO)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -47,11 +47,29 @@ T.loadSettings()
 function T.invoke(name, ...) local r = C2S and C2S:FindFirstChild(name) if not r then return false, nil end local args = table.pack(...) local ok, res = pcall(function() return r:InvokeServer(table.unpack(args, 1, args.n)) end) return ok, res end
 function T.onEvent(name, fn) local e = S2C and S2C:FindFirstChild(name) if e then table.insert(T.conns, e.OnClientEvent:Connect(fn)) end end
 
--- ================= HELPER =================
+-- ================= HELPER (ĐÃ NỚI RỘNG BÁN KÍNH) =================
 function T.pivotPos(i) local ok, cf = pcall(function() return i:GetPivot() end) if ok then return cf.Position end return nil end
 function T.flat(a, b) return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude end
 function T.mappedSet(map) local s = {} for _, v in pairs(map or T.slots) do if typeof(v) == "Instance" then s[v] = true elseif type(v) == "table" and v.inst then s[v.inst] = true end end return s end
-function T.findUnitAt(pos, exclude, timeout) local t0 = os.clock() repeat local f = workspace:FindFirstChild("_UNITS") if f then for _, u in ipairs(f:GetChildren()) do if not exclude[u] then local p = T.pivotPos(u) if p and T.flat(p, pos) < 2 then return u end end end end task.wait(0.15) until os.clock() - t0 >= (timeout or 4) return nil end
+
+-- Tăng bán kính tìm kiếm lên 5 studs (từ 2)
+function T.findUnitAt(pos, exclude, timeout) 
+    local t0 = os.clock() 
+    repeat 
+        local f = workspace:FindFirstChild("_UNITS") 
+        if f then 
+            for _, u in ipairs(f:GetChildren()) do 
+                if not exclude[u] then 
+                    local p = T.pivotPos(u) 
+                    if p and T.flat(p, pos) < 5 then return u end 
+                end 
+            end 
+        end 
+        task.wait(0.15) 
+    until os.clock() - t0 >= (timeout or 4) 
+    return nil 
+end
+
 function T.resetWave() T.wave = 1; T.waveStart = os.clock() end
 function T.waveElapsed() return os.clock() - T.waveStart end
 
@@ -73,9 +91,32 @@ local function sendWebhook()
     task.spawn(function() pcall(function() HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson) end) end)
 end
 
--- ================= GHI MACRO =================
+-- ================= GHI MACRO (FIX SLOT CHO UNIT TO) =================
 local function push(t, f) f.t = t; f.w = T.wave; f.dt = math.floor(T.waveElapsed() * 100) / 100; table.insert(T.rec, f) end
-local function slotOf(inst) if typeof(inst) ~= "Instance" then return nil end for n, s in pairs(T.slots) do if s.inst == inst then return n end end return nil end
+
+-- Nới rộng bán kính map Slot lên 20 studs để nhận diện unit to
+local function slotOf(inst) 
+    if typeof(inst) ~= "Instance" then return nil end 
+    for n, s in pairs(T.slots) do if s.inst == inst then return n end end 
+    local p = T.pivotPos(inst) 
+    if p then 
+        local closestSlot, minDist
+        for n, s in pairs(T.slots) do 
+            if not s.inst then 
+                local d = T.flat(p, s.pos)
+                if not minDist or d < minDist then
+                    minDist = d
+                    closestSlot = n
+                end
+            end 
+        end 
+        if closestSlot and minDist < 20 then 
+            T.slots[closestSlot].inst = inst 
+            return closestSlot 
+        end
+    end 
+    return nil 
+end
 
 function T.startRec() T.rec, T.slots, T.nextSlot = {}, {}, 1 T.recording = true T.status("Đang ghi...") end
 function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " hành động") end
@@ -88,33 +129,35 @@ function T.onCall(name, args, res)
         local id, cf = args[1], args[2]
         if typeof(cf) ~= "CFrame" then return end
         
-        -- Đợi tìm Instance thật của con quân vừa đặt
-        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, T.mappedSet(), 3)
+        local n = T.nextSlot
+        T.nextSlot = n + 1
+        T.slots[n] = { pos = cf.Position }
+        push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
         
-        if inst then
-            local n = T.nextSlot
-            T.nextSlot = n + 1
-            T.slots[n] = { pos = cf.Position, inst = inst }
-            push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
+        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, T.mappedSet(), 4)
+        if inst then 
+            T.slots[n].inst = inst 
             T.status(("Ghi #%d: Đặt Slot %d"):format(#T.rec, n))
         else
-            T.status("Bỏ qua đặt quân: Không lấy được Instance")
+            T.status(("Ghi #%d: Đặt Slot %d (Chưa map được Inst)"):format(#T.rec, n))
         end
     elseif name == "upgrade_unit_ingame" then
         local n = slotOf(args[1])
+        local pos = T.pivotPos(args[1])
         if n then
-            local pos = T.pivotPos(args[1])
             push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z} })
             T.status(("Ghi #%d: Nâng cấp Slot %d"):format(#T.rec, n))
         else
-            T.status("Bỏ qua nâng cấp: Không tìm thấy Slot (bán rồi?)")
+            -- Fallback: Nếu không tìm được slot, lưu theo Tọa độ
+            push("upgrade", { slot = -1, pos = {pos.X, pos.Y, pos.Z} })
+            T.status(("Ghi #%d: Nâng cấp theo Tọa độ"):format(#T.rec))
         end
     elseif name == "sell_unit_ingame" then
         local n = slotOf(args[1])
         if n then 
             push("sell", { slot = n })
             T.status(("Ghi #%d: Bán Slot %d"):format(#T.rec, n))
-            T.slots[n] = nil -- Xóa bộ nhớ Slot khi bán
+            T.slots[n] = nil
         end
     elseif name == "set_game_finished_vote" then
         if args[1] == "replay" then sendWebhook() end
@@ -141,28 +184,57 @@ if hookmetamethod and newcclosure and checkcaller and getnamecallmethod then
     end
 end
 
--- ================= PHÁT LẠI =================
+-- ================= PHÁT LẠI (FIX LOGIC TÌM UNIT) =================
 local function runAction(a, slots, tries)
     if a.t == "spawn" then
         local cf = CFrame.new(table.unpack(a.cf))
-        if tries > 1 then local ex = T.findUnitAt(cf.Position, T.mappedSet(slots), 0) if ex then slots[a.slot] = ex; return true end end
-        local ok, res = T.invoke("spawn_unit", a.id, cf); if not ok or res == false then return false end
+        slots[a.slot] = { pos = cf.Position } -- Lưu cả vị trí
+        
+        if tries > 1 then 
+            local ex = T.findUnitAt(cf.Position, T.mappedSet(slots), 0) 
+            if ex then slots[a.slot].inst = ex; return true end 
+        end
+        
+        local ok, res = T.invoke("spawn_unit", a.id, cf)
+        if not ok or res == false then return false end
+        
         local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, T.mappedSet(slots), 4)
-        if not inst then return false end; slots[a.slot] = inst; return true
+        if not inst then return false end
+        
+        slots[a.slot].inst = inst
+        return true
     elseif a.t == "upgrade" then
-        local inst = slots[a.slot]
-        -- Nếu Instance bị mất (do ván mới), tìm lại bằng tọa độ
+        local inst = nil
+        if a.slot ~= -1 and slots[a.slot] then
+            inst = slots[a.slot].inst or slots[a.slot]
+        end
+        
+        -- Nếu mất instance, tìm lại bằng tọa độ
         if (not inst or not inst.Parent) and a.pos then
             local targetPos = Vector3.new(a.pos[1], a.pos[2], a.pos[3])
             inst = T.findUnitAt(targetPos, T.mappedSet(slots), 1)
-            if inst then slots[a.slot] = inst end
         end
-        if not inst or not inst.Parent then return true end
-        task.wait(0.2) -- Đợi 0.2 giây để Server xử lý xong lệnh trước
-        local ok, res = T.invoke("upgrade_unit_ingame", inst); return ok and res ~= false
+        
+        if not inst or not inst.Parent then 
+            T.status("Bỏ qua: Không tìm thấy Unit")
+            return true 
+        end
+        
+        task.wait(0.2) -- Delay chống nghẽn
+        local ok, res = T.invoke("upgrade_unit_ingame", inst)
+        return ok and res ~= false
     elseif a.t == "sell" then
-        local inst = slots[a.slot]; if not inst or not inst.Parent then return true end
-        task.wait(0.2); local ok, res = T.invoke("sell_unit_ingame", inst); slots[a.slot] = nil; return ok and res ~= false
+        local inst = nil
+        if a.slot ~= -1 and slots[a.slot] then
+            inst = slots[a.slot].inst or slots[a.slot]
+        end
+        
+        if not inst or not inst.Parent then return true end
+        
+        task.wait(0.2)
+        local ok, res = T.invoke("sell_unit_ingame", inst)
+        if a.slot ~= -1 then slots[a.slot] = nil end
+        return ok and res ~= false
     end
     return true
 end
@@ -206,7 +278,6 @@ task.spawn(function()
         if T.dead then break end
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         
-        -- Auto Vote Yes
         if T.settings.autoStart then
             local voteStart = pg and pg:FindFirstChild("VoteStart")
             if voteStart then
@@ -230,7 +301,6 @@ task.spawn(function()
             else voted = false end
         end
         
-        -- Auto Replay
         if T.settings.autoReplay then
             for _, gui in ipairs(pg:GetDescendants()) do
                 if gui:IsA("TextButton") and (string.lower(gui.Text):find("replay") or string.lower(gui.Text):find("play again")) then
