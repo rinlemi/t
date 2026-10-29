@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX LỖI MISS UPGRADE CON TO)
+-- TUANH HUB - ALL IN ONE (FIX LỖI NÂNG CẤP NHẦM CON KHI ĐỨNG GẦN)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -47,23 +47,37 @@ T.loadSettings()
 function T.invoke(name, ...) local r = C2S and C2S:FindFirstChild(name) if not r then return false, nil end local args = table.pack(...) local ok, res = pcall(function() return r:InvokeServer(table.unpack(args, 1, args.n)) end) return ok, res end
 function T.onEvent(name, fn) local e = S2C and S2C:FindFirstChild(name) if e then table.insert(T.conns, e.OnClientEvent:Connect(fn)) end end
 
--- ================= HELPER (ĐÃ NỚI RỘNG BÁN KÍNH) =================
+-- ================= HELPER (THUẬT TOÁN TÌM QUÂN CHÍNH XÁC) =================
 function T.pivotPos(i) local ok, cf = pcall(function() return i:GetPivot() end) if ok then return cf.Position end return nil end
 function T.flat(a, b) return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude end
 function T.mappedSet(map) local s = {} for _, v in pairs(map or T.slots) do if typeof(v) == "Instance" then s[v] = true elseif type(v) == "table" and v.inst then s[v.inst] = true end end return s end
 
--- Tăng bán kính tìm kiếm lên 5 studs (từ 2)
-function T.findUnitAt(pos, exclude, timeout) 
+-- Tìm con quân GẦN NHẤT và có TÊN TRÙNG KHỚP
+function T.findUnitAt(pos, nameFilter, exclude, timeout) 
     local t0 = os.clock() 
     repeat 
         local f = workspace:FindFirstChild("_UNITS") 
         if f then 
+            local closestUnit = nil
+            local minDist = 999
             for _, u in ipairs(f:GetChildren()) do 
                 if not exclude[u] then 
-                    local p = T.pivotPos(u) 
-                    if p and T.flat(p, pos) < 5 then return u end 
+                    local isNameMatch = true
+                    if nameFilter and u.Name ~= nameFilter then isNameMatch = false end
+                    
+                    if isNameMatch then
+                        local p = T.pivotPos(u) 
+                        if p then
+                            local d = T.flat(p, pos)
+                            if d < minDist and d < 10 then -- Bán kính 10 studs
+                                minDist = d
+                                closestUnit = u
+                            end
+                        end
+                    end
                 end 
             end 
+            if closestUnit then return closestUnit end
         end 
         task.wait(0.15) 
     until os.clock() - t0 >= (timeout or 4) 
@@ -91,28 +105,32 @@ local function sendWebhook()
     task.spawn(function() pcall(function() HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson) end) end)
 end
 
--- ================= GHI MACRO (FIX SLOT CHO UNIT TO) =================
+-- ================= GHI MACRO (FIX NHẬN DIỆN SLOT) =================
 local function push(t, f) f.t = t; f.w = T.wave; f.dt = math.floor(T.waveElapsed() * 100) / 100; table.insert(T.rec, f) end
 
--- Nới rộng bán kính map Slot lên 20 studs để nhận diện unit to
+-- Hàm này sẽ gán Instance chính xác vào Slot
 local function slotOf(inst) 
     if typeof(inst) ~= "Instance" then return nil end 
+    
+    -- 1. Nếu đã gán chính xác rồi
     for n, s in pairs(T.slots) do if s.inst == inst then return n end end 
+    
+    -- 2. Nếu chưa gán, tìm Slot chưa có Inst và gần nhất (bán kính 15 studs)
     local p = T.pivotPos(inst) 
     if p then 
-        local closestSlot, minDist
+        local bestSlot, minDist
         for n, s in pairs(T.slots) do 
             if not s.inst then 
                 local d = T.flat(p, s.pos)
                 if not minDist or d < minDist then
                     minDist = d
-                    closestSlot = n
+                    bestSlot = n
                 end
             end 
         end 
-        if closestSlot and minDist < 20 then 
-            T.slots[closestSlot].inst = inst 
-            return closestSlot 
+        if bestSlot and minDist < 15 then 
+            T.slots[bestSlot].inst = inst 
+            return bestSlot 
         end
     end 
     return nil 
@@ -134,22 +152,26 @@ function T.onCall(name, args, res)
         T.slots[n] = { pos = cf.Position }
         push("spawn", { slot = n, id = id, cf = { cf:GetComponents() } })
         
-        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, T.mappedSet(), 4)
+        -- Đợi game sinh ra quân rồi tìm chính xác
+        local inst = (typeof(res[1]) == "Instance") and res[1] or T.findUnitAt(cf.Position, nil, T.mappedSet(), 4)
         if inst then 
             T.slots[n].inst = inst 
-            T.status(("Ghi #%d: Đặt Slot %d"):format(#T.rec, n))
+            T.slots[n].name = inst.Name
+            T.status(("Ghi #%d: Đặt Slot %d (%s)"):format(#T.rec, n, inst.Name))
         else
-            T.status(("Ghi #%d: Đặt Slot %d (Chưa map được Inst)"):format(#T.rec, n))
+            T.status(("Ghi #%d: Đặt Slot %d (Chưa map được)"):format(#T.rec, n))
         end
     elseif name == "upgrade_unit_ingame" then
-        local n = slotOf(args[1])
-        local pos = T.pivotPos(args[1])
+        local inst = args[1]
+        local n = slotOf(inst)
+        local pos = T.pivotPos(inst)
+        local name = inst.Name
+        
         if n then
-            push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z} })
+            push("upgrade", { slot = n, pos = {pos.X, pos.Y, pos.Z}, name = name })
             T.status(("Ghi #%d: Nâng cấp Slot %d"):format(#T.rec, n))
         else
-            -- Fallback: Nếu không tìm được slot, lưu theo Tọa độ
-            push("upgrade", { slot = -1, pos = {pos.X, pos.Y, pos.Z} })
+            push("upgrade", { slot = -1, pos = {pos.X, pos.Y, pos.Z}, name = name })
             T.status(("Ghi #%d: Nâng cấp theo Tọa độ"):format(#T.rec))
         end
     elseif name == "sell_unit_ingame" then
@@ -184,21 +206,21 @@ if hookmetamethod and newcclosure and checkcaller and getnamecallmethod then
     end
 end
 
--- ================= PHÁT LẠI (FIX LOGIC TÌM UNIT) =================
+-- ================= PHÁT LẠI (FIX LOGIC CHỌN QUÂN) =================
 local function runAction(a, slots, tries)
     if a.t == "spawn" then
         local cf = CFrame.new(table.unpack(a.cf))
-        slots[a.slot] = { pos = cf.Position } -- Lưu cả vị trí
+        slots[a.slot] = { pos = cf.Position } 
         
         if tries > 1 then 
-            local ex = T.findUnitAt(cf.Position, T.mappedSet(slots), 0) 
+            local ex = T.findUnitAt(cf.Position, nil, T.mappedSet(slots), 0) 
             if ex then slots[a.slot].inst = ex; return true end 
         end
         
         local ok, res = T.invoke("spawn_unit", a.id, cf)
         if not ok or res == false then return false end
         
-        local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, T.mappedSet(slots), 4)
+        local inst = (typeof(res) == "Instance") and res or T.findUnitAt(cf.Position, nil, T.mappedSet(slots), 4)
         if not inst then return false end
         
         slots[a.slot].inst = inst
@@ -209,18 +231,18 @@ local function runAction(a, slots, tries)
             inst = slots[a.slot].inst or slots[a.slot]
         end
         
-        -- Nếu mất instance, tìm lại bằng tọa độ
+        -- Nếu mất instance, tìm lại CHÍNH XÁC bằng Tên + Tọa độ
         if (not inst or not inst.Parent) and a.pos then
             local targetPos = Vector3.new(a.pos[1], a.pos[2], a.pos[3])
-            inst = T.findUnitAt(targetPos, T.mappedSet(slots), 1)
+            inst = T.findUnitAt(targetPos, a.name, T.mappedSet(slots), 1)
         end
         
         if not inst or not inst.Parent then 
-            T.status("Bỏ qua: Không tìm thấy Unit")
+            T.status("Bỏ qua: Không tìm thấy Unit " .. tostring(a.name))
             return true 
         end
         
-        task.wait(0.2) -- Delay chống nghẽn
+        task.wait(0.2) -- Delay chống nghẽn Server
         local ok, res = T.invoke("upgrade_unit_ingame", inst)
         return ok and res ~= false
     elseif a.t == "sell" then
