@@ -1,0 +1,1562 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:GetService("Players").LocalPlayer
+game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+task.wait(5)
+
+local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local HttpService       = game:GetService("HttpService")
+local TeleportService   = game:GetService("TeleportService")
+local TweenService      = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VIM               = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+local PlaceId     = game.PlaceId
+local JobId       = game.JobId
+
+-- =====================================================================
+--  CẤU HÌNH
+-- =====================================================================
+local ISLANDS = {
+    {Name = "Đảo 1", Pos = Vector3.new(1015.36, 2.31, 2788.16)},
+    {Name = "Đảo 2", Pos = Vector3.new(3460.87, 69.48, 2649.14)},
+    {Name = "Đảo 3", Pos = Vector3.new(4111.75, 72.89, 398.32)},
+    {Name = "Đảo 4", Pos = Vector3.new(626.28, 105.77, -976.89)},
+    {Name = "Đảo 5", Pos = Vector3.new(-1050.31, 57.10, 182.55)},
+}
+local ISLAND_Y       = 10
+local LOOT_FLY_SPEED = 500
+local DF_SPEED       = 150
+local SCAN_DELAY     = 2.0
+local AUTO_LOOT_GAP  = 5      -- nghỉ giữa 2 vòng auto loot (giây)
+
+local cfg = {
+    islandSpeed    = 800,
+    loadDelay      = 2.5,
+    hopAfter       = false,
+    autoLoot       = false,
+    killEnabled    = false,
+    webhookSummary = true,
+    farmBoss       = false,
+    huntBoss       = false,
+    -- [MỚI] Auto M1 + Equip Tool
+    autoM1         = false,
+    m1Delay        = 0.15,    -- đừng để dưới 0.1
+    autoEquip      = false,
+    equipTool      = "",
+}
+
+-- =====================================================================
+--  TRẠNG THÁI
+-- =====================================================================
+local env = (getgenv and getgenv()) or _G
+env.HubGen = (env.HubGen or 0) + 1
+local myGen = env.HubGen
+
+local YELLOW = Color3.fromRGB(255, 200, 0)
+local GREEN  = Color3.fromRGB(0, 255, 100)
+local RED    = Color3.fromRGB(255, 80, 80)
+local WHITE  = Color3.fromRGB(230, 230, 230)
+
+local parentGui = (gethui and gethui()) or game:GetService("CoreGui")
+local oldGui = parentGui:FindFirstChild("HubStatus_UI")
+if oldGui then oldGui:Destroy() end
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "HubStatus_UI"
+sg.ResetOnSpawn = false
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+sg.Parent = parentGui
+
+local bar = Instance.new("TextLabel", sg)
+bar.Size = UDim2.new(0, 340, 0, 26)
+bar.Position = UDim2.new(0.5, -170, 0, 8)
+bar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+bar.BackgroundTransparency = 0.25
+bar.BorderSizePixel = 0
+bar.Font = Enum.Font.GothamMedium
+bar.TextSize = 13
+bar.TextColor3 = WHITE
+bar.Text = "Hub: sẵn sàng"
+Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
+
+local function setStatus(text, color)
+    bar.Text = text
+    bar.TextColor3 = color or WHITE
+end
+
+-- khai báo trước, gán sau
+local getBeli, sendLootSummary
+local lootActive = false
+local lootStats  = {items = {}, beliStart = nil}
+
+-- =====================================================================
+--  QUẢN LÝ TÁC VỤ
+-- =====================================================================
+local current = nil
+local cancelFlag = false
+
+local function runTask(name, fn)
+    if current == name then
+        cancelFlag = true
+        setStatus("Đang dừng...", RED)
+        return
+    end
+    if current then
+        setStatus("Đang bận: " .. current .. " (bấm lại nút đó để dừng)", RED)
+        return
+    end
+    current = name
+    cancelFlag = false
+    task.spawn(function()
+        local ok, err = xpcall(fn, function(e) return tostring(e) .. "\n" .. debug.traceback() end)
+        if not ok then
+            warn("[Hub] Lỗi: " .. tostring(err))
+            setStatus("Lỗi: " .. tostring(err):match("^[^\n]*"), RED)
+        end
+        lootActive = false
+        current = nil
+        cancelFlag = false
+    end)
+end
+
+local function waitCancelable(sec)
+    local t0 = tick()
+    while tick() - t0 < sec and not cancelFlag do task.wait(0.05) end
+end
+
+-- =====================================================================
+--  BAY BẰNG TWEEN
+-- =====================================================================
+local function SafeTween(targetPos, speed, yOffset)
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not (hum and root) or hum.Health <= 0 then return false end
+
+    local goal = targetPos + Vector3.new(0, yOffset or 0, 0)
+    local dist = (goal - root.Position).Magnitude
+    if dist < 5 then return true end
+
+    pcall(function()
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end)
+
+    local rot = root.CFrame - root.CFrame.Position
+    local tween = TweenService:Create(root,
+        TweenInfo.new(dist / math.max(speed, 1), Enum.EasingStyle.Linear),
+        {CFrame = CFrame.new(goal) * rot})
+
+    local finished, completed = false, false
+    local c1 = tween.Completed:Connect(function(state)
+        finished = true
+        completed = (state == Enum.PlaybackState.Completed)
+    end)
+    local c2 = RunService.Heartbeat:Connect(function()
+        if root.Parent then root.AssemblyLinearVelocity = Vector3.zero end
+    end)
+
+    tween:Play()
+    while not finished do
+        if cancelFlag or not root.Parent or hum.Health <= 0 then
+            tween:Cancel()
+            break
+        end
+        task.wait(0.05)
+    end
+    c1:Disconnect()
+    c2:Disconnect()
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end)
+    return completed
+end
+
+-- =====================================================================
+--  HOP SERVER
+-- =====================================================================
+local visitedServers = env.HubVisited or {}
+env.HubVisited = visitedServers
+visitedServers[JobId] = true
+
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+local HOSTS = {"games.roblox.com", "games.roproxy.com"}
+local CACHE_TIME = 300
+local MAX_PAGES  = 2
+local serverCache = env.HubServerCache or {time = 0, list = {}}
+env.HubServerCache = serverCache
+
+local function httpGet(url)
+    if httpRequest then
+        local ok, res = pcall(httpRequest, {Url = url, Method = "GET"})
+        if ok and res then
+            if res.StatusCode == 200 then return res.Body end
+            return nil, res.StatusCode
+        end
+        return nil, 0
+    end
+    local ok, body = pcall(game.HttpGet, game, url)
+    if ok then return body end
+    return nil, 0
+end
+
+local function getPage(cursor, silent)
+    local hostIdx = 1
+    for attempt = 1, 4 do
+        local url = string.format(
+            "https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s",
+            HOSTS[hostIdx], PlaceId, cursor ~= "" and ("&cursor=" .. cursor) or "")
+        local body = httpGet(url)
+        if body then
+            local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+            if ok and type(data) == "table" and data.data then return data end
+        end
+        if attempt == 4 then break end
+        hostIdx = hostIdx % #HOSTS + 1
+        local wait = attempt * 4
+        if not silent then
+            setStatus(string.format("API bị giới hạn, thử lại sau %ds (%d/4)...", wait, attempt), YELLOW)
+        end
+        waitCancelable(wait)
+        if cancelFlag then return nil end
+    end
+    return nil
+end
+
+local function fetchServers(silent)
+    local servers, cursor = {}, ""
+    for page = 1, MAX_PAGES do
+        local res = getPage(cursor, silent)
+        if not res then
+            if page == 1 then return nil end
+            break
+        end
+        for _, s in ipairs(res.data) do
+            if s.id ~= JobId and s.playing and s.playing >= 2 and s.playing <= 5
+                and s.playing < s.maxPlayers then
+                servers[#servers + 1] = s
+            end
+        end
+        if not res.nextPageCursor then break end
+        cursor = res.nextPageCursor
+        waitCancelable(1.5)
+        if cancelFlag then return nil end
+    end
+    return servers
+end
+
+local function doHop()
+    local servers
+    if tick() - serverCache.time < CACHE_TIME and #serverCache.list > 0 then
+        servers = serverCache.list
+        setStatus("Dùng danh sách server đã lưu...", YELLOW)
+    else
+        setStatus("Đang lấy danh sách server...", YELLOW)
+        servers = fetchServers(false)
+        if cancelFlag then setStatus("Đã hủy hop!", RED) return end
+        if not servers then
+            setStatus("API vẫn bị chặn, đợi ~1 phút rồi bấm lại!", RED)
+            return
+        end
+        serverCache.time = tick()
+        serverCache.list = servers
+    end
+
+    if #servers == 0 then
+        setStatus("Không có server 2-5 người!", RED)
+        return
+    end
+
+    local fresh = {}
+    for _, s in ipairs(servers) do
+        if not visitedServers[s.id] then fresh[#fresh + 1] = s end
+    end
+    if #fresh == 0 then
+        for k in pairs(visitedServers) do visitedServers[k] = nil end
+        visitedServers[JobId] = true
+        fresh = servers
+    end
+
+    local chosen = fresh[math.random(#fresh)]
+    visitedServers[chosen.id] = true
+    for i, s in ipairs(serverCache.list) do
+        if s.id == chosen.id then table.remove(serverCache.list, i) break end
+    end
+
+    setStatus("Vào server (" .. chosen.playing .. " người)...", GREEN)
+    task.wait(1)
+    pcall(function() TeleportService:TeleportToPlaceInstance(PlaceId, chosen.id, LocalPlayer) end)
+end
+
+task.spawn(function()
+    task.wait(8)
+    while env.HubGen == myGen do
+        local sleep = 30
+        if tick() - serverCache.time > CACHE_TIME - 30 then
+            local list = fetchServers(true)
+            if list and #list > 0 then
+                serverCache.time = tick()
+                serverCache.list = list
+            else
+                sleep = 120
+            end
+        end
+        task.wait(sleep)
+    end
+end)
+
+TeleportService.TeleportInitFailed:Connect(function()
+    setStatus("Teleport lỗi (server đầy?), bấm Hop lại", RED)
+end)
+
+-- =====================================================================
+--  DF: TÌM + BAY TỚI + BẤM E
+-- =====================================================================
+local dfSkipUntil = 0
+
+local function getDF()
+    local w = workspace:FindFirstChild("World")
+    local p = w and w:FindFirstChild("Playability")
+    local dt = p and p:FindFirstChild("DroppedTools")
+    return dt and dt:FindFirstChild("Handle")
+end
+
+local function getDFPrompt(df)
+    if not df then return nil end
+    return df:FindFirstChildWhichIsA("ProximityPrompt", true)
+        or (df.Parent and df.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
+end
+
+local function pressE(duration)
+    pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game) end)
+    waitCancelable(duration)
+    pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
+end
+
+local function pickupDF(returnPos)
+    for attempt = 1, 4 do
+        if cancelFlag then return false end
+        local df = getDF()
+        if not df then return true end
+        setStatus(string.format("🔥 Thấy DF! Bay tới nhặt (%d/4)...", attempt), GREEN)
+        SafeTween(df.Position, DF_SPEED, 2)
+        if cancelFlag then return false end
+        waitCancelable(0.4)
+        local cur = getDF()
+        if cur then
+            local prompt = getDFPrompt(cur)
+            local hold = prompt and prompt.HoldDuration or 0
+            pressE(math.max(hold, 0.3) + 0.2)
+            waitCancelable(0.5)
+            if getDF() and not cancelFlag and prompt and fireproximityprompt then
+                pcall(function() fireproximityprompt(prompt) end)
+                waitCancelable(0.5)
+            end
+        end
+        if not getDF() then
+            setStatus("✅ Đã nhặt DF!", GREEN)
+            if returnPos and not cancelFlag then
+                SafeTween(returnPos, cfg.islandSpeed, ISLAND_Y)
+            end
+            return true
+        end
+    end
+    dfSkipUntil = tick() + 20
+    setStatus("Nhặt DF thất bại, bỏ qua 20s", RED)
+    return false
+end
+
+local function tryDF(returnPos)
+    if cancelFlag or tick() < dfSkipUntil then return 0 end
+    if not getDF() then return 0 end
+    return pickupDF(returnPos) and 1 or 0
+end
+
+-- =====================================================================
+--  LOOT CHEST
+-- =====================================================================
+local function getChestFolder()
+    local w = workspace:FindFirstChild("World")
+    local p = w and w:FindFirstChild("Playability")
+    return p and p:FindFirstChild("Chests")
+end
+
+local function CollectChestsOnIsland(islPos, withDF)
+    local chestFolder = getChestFolder()
+    if not chestFolder then return 0, 0 end
+    local collected, dfGot = 0, 0
+    for _, chest in ipairs(chestFolder:GetChildren()) do
+        if cancelFlag then break end
+        if withDF then
+            dfGot += tryDF(islPos)
+            if cancelFlag then break end
+        end
+        if chest:IsA("Model") then
+            local prompt = chest:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt and fireproximityprompt then
+                pcall(function() fireproximityprompt(prompt) end)
+                collected += 1
+                task.wait(0.2)
+            else
+                local hitbox = chest:FindFirstChild("Hitbox") or chest:FindFirstChild("RootPart")
+                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hitbox and root then
+                    root.CFrame = CFrame.new(hitbox.Position + Vector3.new(0, 2, 0))
+                    collected += 1
+                    task.wait(0.15)
+                end
+            end
+        end
+    end
+    return collected, dfGot
+end
+
+local function lootRoute(withDF)
+    local route = {}
+    for _, isl in ipairs(ISLANDS) do route[#route + 1] = isl end
+    route[#route + 1] = ISLANDS[1]
+
+    lootStats = {items = {}, beliStart = getBeli and getBeli() or nil}
+    lootActive = true
+
+    local totalChest, totalDF = 0, 0
+    for i, isl in ipairs(route) do
+        if cancelFlag then break end
+        setStatus(string.format("Đang bay tới %s (%d/%d)...", isl.Name, i, #route), YELLOW)
+        SafeTween(isl.Pos, LOOT_FLY_SPEED, ISLAND_Y)
+        if cancelFlag then break end
+
+        setStatus("Đang tải Chest " .. isl.Name .. "...", YELLOW)
+        local t0 = tick()
+        while tick() - t0 < cfg.loadDelay and not cancelFlag do
+            if withDF then totalDF += tryDF(isl.Pos) end
+            task.wait(0.1)
+        end
+        if cancelFlag then break end
+
+        setStatus("Đang nhặt Chest " .. isl.Name .. "...", YELLOW)
+        local c, d = CollectChestsOnIsland(isl.Pos, withDF)
+        totalChest += c
+        totalDF += d
+        print(string.format("[Hub] %s: %d chest, %d DF", isl.Name, c, d))
+        if withDF then totalDF += tryDF(isl.Pos) end
+        waitCancelable(0.5)
+    end
+
+    lootActive = false
+    local summary = withDF
+        and string.format("Chest: %d | DF: %d", totalChest, totalDF)
+        or  string.format("Tổng cộng: %d Chest", totalChest)
+
+    if cancelFlag then
+        setStatus((cfg.rareStop and "🎉 Nhặt được DF đã chọn! " or "Đã dừng! ") .. summary, cfg.rareStop and GREEN or RED)
+    else
+        setStatus("Xong! " .. summary, GREEN)
+        -- gửi webhook tổng kết TRƯỚC khi hop (hop sẽ cắt script)
+        if cfg.webhookSummary and sendLootSummary then
+            pcall(sendLootSummary, totalChest, totalDF)
+        end
+        if cfg.hopAfter then
+            task.wait(1)
+            doHop()
+        end
+    end
+end
+
+local function lootChests() lootRoute(false) end
+
+local autoToggle
+
+local function autoLootLoop()
+    waitCancelable(3)
+    while not cancelFlag and env.HubGen == myGen do
+        lootRoute(true)
+        if cancelFlag or cfg.rareStop then break end
+        if cfg.hopAfter then
+            waitCancelable(20)
+        else
+            setStatus("Xong vòng, nghỉ " .. AUTO_LOOT_GAP .. "s rồi loot tiếp...", GREEN)
+            waitCancelable(AUTO_LOOT_GAP)
+        end
+    end
+    if cfg.rareStop then
+        cfg.autoLoot = false
+        pcall(function() autoToggle:Set(false) end)
+    end
+end
+
+-- =====================================================================
+--  QUÉT DF
+-- =====================================================================
+local function scanDF()
+    if getDF() then
+        setStatus("DF đã ở ngay đây!", GREEN)
+        pickupDF(nil)
+        return
+    end
+    for i, isl in ipairs(ISLANDS) do
+        if cancelFlag then break end
+        setStatus(string.format("Bay tới %s (%d/%d)...", isl.Name, i, #ISLANDS), YELLOW)
+        SafeTween(isl.Pos, cfg.islandSpeed, ISLAND_Y)
+        if cancelFlag then break end
+        setStatus("Đang quét " .. isl.Name .. "...", YELLOW)
+        local t0 = tick()
+        while tick() - t0 < SCAN_DELAY and not cancelFlag do
+            if getDF() then
+                setStatus("🔥 TÌM THẤY DF tại " .. isl.Name .. "!", GREEN)
+                pickupDF(nil)
+                return
+            end
+            task.wait(0.1)
+        end
+    end
+    if cancelFlag then
+        setStatus("Đã hủy quét DF!", RED)
+    else
+        setStatus("Đã quét hết 5 đảo, không thấy DF!", RED)
+    end
+end
+
+-- =====================================================================
+--  INSTANT KILL
+-- =====================================================================
+local killEnabled   = false
+local killThreshold = 0.89
+
+task.spawn(function()
+    while env.HubGen == myGen do
+        task.wait(0.2)
+        if killEnabled then
+            pcall(function()
+                local w = workspace:FindFirstChild("World")
+                local p = w and w:FindFirstChild("Playability")
+                local folder = p and p:FindFirstChild("Enemys")
+                if not folder then return end
+                for _, enemy in ipairs(folder:GetChildren()) do
+                    local hum = enemy:FindFirstChild("Humanoid")
+                    if hum and hum.Health > 0 and hum.MaxHealth > 0
+                        and hum.Health / hum.MaxHealth <= killThreshold then
+                        hum.Health = 0
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- =====================================================================
+--  CONFIG (lưu file) + WEBHOOK + DF HIẾM
+-- =====================================================================
+local UserInputService = game:GetService("UserInputService")
+local CONFIG_FILE = "MegaHub_Config.json"
+local AUTO_FILE   = "MegaHub_AutoLoad.txt"
+
+cfg.webhook    = ""
+cfg.stopOnRare = true
+cfg.rareStop   = false
+cfg.autoLoad   = true
+cfg.fruits     = {vessel = true, infinity = true, quake = true}
+
+local RARE_FRUITS = {
+    {key = "vessel",   name = "Vessel Fruit"},
+    {key = "infinity", name = "Infinity Fruit"},
+    {key = "quake",    name = "Quake Fruit"},
+}
+
+local function saveConfig()
+    if not writefile then return false end
+    local data = {
+        webhook        = cfg.webhook,
+        stopOnRare     = cfg.stopOnRare,
+        fruits         = cfg.fruits,
+        hopAfter       = cfg.hopAfter,
+        loadDelay      = cfg.loadDelay,
+        islandSpeed    = cfg.islandSpeed,
+        killPercent    = math.floor(killThreshold * 100 + 0.5),
+        killEnabled    = killEnabled,
+        autoLoot       = cfg.autoLoot,
+        webhookSummary = cfg.webhookSummary,
+        farmBoss       = cfg.farmBoss,
+        huntBoss       = cfg.huntBoss,
+        -- [MỚI]
+        autoM1         = cfg.autoM1,
+        m1Delay        = cfg.m1Delay,
+        autoEquip      = cfg.autoEquip,
+        equipTool      = cfg.equipTool,
+    }
+    local ok, err = pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(data)) end)
+    if not ok then warn("[Hub] Lưu config lỗi: " .. tostring(err)) end
+    return ok
+end
+
+local function loadConfig()
+    if not (isfile and readfile and isfile(CONFIG_FILE)) then return end
+    local ok, d = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
+    if not ok or type(d) ~= "table" then return end
+
+    if type(d.webhook) == "string" then cfg.webhook = d.webhook end
+    if type(d.stopOnRare) == "boolean" then cfg.stopOnRare = d.stopOnRare end
+    if type(d.hopAfter) == "boolean" then cfg.hopAfter = d.hopAfter end
+    if type(d.autoLoot) == "boolean" then cfg.autoLoot = d.autoLoot end
+    if type(d.webhookSummary) == "boolean" then cfg.webhookSummary = d.webhookSummary end
+    if type(d.farmBoss) == "boolean" then cfg.farmBoss = d.farmBoss end
+    if type(d.huntBoss) == "boolean" then cfg.huntBoss = d.huntBoss end
+    if type(d.killEnabled) == "boolean" then killEnabled = d.killEnabled end
+    -- [MỚI]
+    if type(d.autoM1) == "boolean" then cfg.autoM1 = d.autoM1 end
+    if type(d.autoEquip) == "boolean" then cfg.autoEquip = d.autoEquip end
+    if type(d.equipTool) == "string" then cfg.equipTool = d.equipTool end
+    if type(d.m1Delay) == "number" then cfg.m1Delay = math.clamp(d.m1Delay, 0.1, 1) end
+
+    if type(d.fruits) == "table" then
+        for _, f in ipairs(RARE_FRUITS) do
+            if type(d.fruits[f.key]) == "boolean" then cfg.fruits[f.key] = d.fruits[f.key] end
+        end
+    end
+    if type(d.loadDelay) == "number" then cfg.loadDelay = math.clamp(d.loadDelay, 0.5, 6) end
+    if type(d.islandSpeed) == "number" then cfg.islandSpeed = math.clamp(d.islandSpeed, 100, 2000) end
+    if type(d.killPercent) == "number" then killThreshold = math.clamp(d.killPercent, 1, 100) / 100 end
+end
+
+-- Auto Load Config: đọc cờ riêng, bật thì mới nạp config
+if isfile and readfile and isfile(AUTO_FILE) then
+    local okf, txt = pcall(readfile, AUTO_FILE)
+    if okf then cfg.autoLoad = (txt ~= "0") end
+end
+if cfg.autoLoad then loadConfig() end
+
+local saveToken = 0
+local function saveSoon()
+    saveToken += 1
+    local my = saveToken
+    task.delay(1, function()
+        if my == saveToken then saveConfig() end
+    end)
+end
+
+-- ---------------- Webhook ----------------
+getBeli = function()
+    local ok, txt = pcall(function()
+        local cl = LocalPlayer.PlayerGui.Interfaces.Screen.Display.CoinsLabel
+        local tl = cl:FindFirstChild("TextLabel") or cl
+        return tl.Text
+    end)
+    if ok and txt and txt ~= "" then return tostring(txt) end
+
+    local okL, v = pcall(function()
+        local ls = LocalPlayer:FindFirstChild("leaderstats")
+        if not ls then return nil end
+        for _, n in ipairs({"Beli", "Coins", "Money", "Cash"}) do
+            local x = ls:FindFirstChild(n)
+            if x then return tostring(x.Value) end
+        end
+    end)
+    if okL and v then return v end
+    return "không đọc được"
+end
+
+local function toNum(s)
+    local n = tonumber((tostring(s or ""):gsub("[^%d]", "")))
+    return n
+end
+
+local function postWebhook(embed)
+    local url = (cfg.webhook or ""):gsub("%s+", "")
+    if url == "" then return false, "Chưa nhập Webhook" end
+    if not httpRequest then return false, "Executor không hỗ trợ request" end
+    local body = HttpService:JSONEncode({username = "Fruit Notifier", embeds = {embed}})
+    local ok, res = pcall(httpRequest, {
+        Url = url,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = body,
+    })
+    if ok and res and (res.StatusCode == 200 or res.StatusCode == 204) then
+        return true
+    end
+    return false, "HTTP " .. tostring(ok and res and res.StatusCode or "lỗi")
+end
+
+local function sendWebhook(fruitName, isTest)
+    return postWebhook({
+        title  = isTest and "🧪 Test Webhook" or "🍎 Nhặt được DF hiếm!",
+        color  = isTest and 0x5865F2 or 0x00FF88,
+        fields = {
+            {name = "DF vừa nhặt",   value = fruitName, inline = true},
+            {name = "Beli hiện tại", value = getBeli(), inline = true},
+        },
+        footer    = {text = LocalPlayer.Name},
+        timestamp = DateTime.now():ToIsoDate(),
+    })
+end
+
+sendLootSummary = function(totalChest, totalDF)
+    task.wait(1.5)
+    local counts, order = {}, {}
+    for _, name in ipairs(lootStats.items) do
+        if not counts[name] then counts[name] = 0 order[#order + 1] = name end
+        counts[name] += 1
+    end
+    local lines = {}
+    for _, name in ipairs(order) do
+        lines[#lines + 1] = "• " .. name .. (counts[name] > 1 and (" x" .. counts[name]) or "")
+    end
+    local itemsText = #lines > 0 and table.concat(lines, "\n") or "Không có vật phẩm mới"
+    if #itemsText > 1000 then itemsText = itemsText:sub(1, 1000) .. "..." end
+
+    local beliNow = getBeli()
+    local a, b = toNum(lootStats.beliStart), toNum(beliNow)
+    local diff = (a and b) and (b - a) or nil
+    local diffText = diff and ((diff >= 0 and "+" or "") .. tostring(diff)) or "không tính được"
+
+    local ok, err = postWebhook({
+        title  = "✅ Loot xong",
+        color  = 0x00FF88,
+        fields = {
+            {name = "Chest đã nhặt",     value = tostring(totalChest), inline = true},
+            {name = "DF nhặt được",      value = tostring(totalDF), inline = true},
+            {name = "Vật phẩm vừa nhặt", value = itemsText, inline = false},
+            {name = "Beli hiện tại",     value = beliNow, inline = true},
+            {name = "Beli thay đổi",     value = diffText, inline = true},
+        },
+        footer    = {text = LocalPlayer.Name},
+        timestamp = DateTime.now():ToIsoDate(),
+    })
+    if not ok then warn("[Hub] Webhook tổng kết lỗi: " .. tostring(err)) end
+end
+
+-- =====================================================================
+--  [MỚI] AUTO M1 (chạy nền, song song với các tác vụ khác)
+-- =====================================================================
+local function getCombatRemotes()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return nil, nil end
+    local combat = remotes:FindFirstChild("Combat Event")
+    local ve = remotes:FindFirstChild("Visual Event")
+    local visual = ve and ve:FindFirstChild("Replicated")
+    return combat, visual
+end
+
+task.spawn(function()
+    while env.HubGen == myGen do
+        if cfg.autoM1 then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if char and hum and hum.Health > 0 and not hum.Sit then
+                local combat, visual = getCombatRemotes()
+                if visual then
+                    pcall(function()
+                        visual:FireServer("Crimson SwordVFX", "M1Custom", char, 1)
+                    end)
+                end
+                if combat then
+                    pcall(function() combat:FireServer(1) end)
+                end
+            end
+            task.wait(math.max(cfg.m1Delay, 0.1))
+        else
+            task.wait(0.25)
+        end
+    end
+end)
+
+-- =====================================================================
+--  [MỚI] EQUIP TOOL (liệt kê tool trong balo + giữ tool)
+-- =====================================================================
+local NO_TOOL = "(không có tool)"
+
+local function getToolNames()
+    local names, seen = {}, {}
+    local function scan(container)
+        if not container then return end
+        for _, t in ipairs(container:GetChildren()) do
+            if t:IsA("Tool") and not seen[t.Name] then
+                seen[t.Name] = true
+                names[#names + 1] = t.Name
+            end
+        end
+    end
+    scan(LocalPlayer:FindFirstChildOfClass("Backpack"))
+    scan(LocalPlayer.Character)
+    table.sort(names)
+    return names
+end
+
+local function equipByName(name)
+    if not name or name == "" or name == NO_TOOL then return false end
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if char:FindFirstChild(name) then return true end -- đang cầm rồi
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    local tool = bp and bp:FindFirstChild(name)
+    if tool and tool:IsA("Tool") then
+        pcall(function() hum:EquipTool(tool) end)
+        return true
+    end
+    return false
+end
+
+-- Vòng giữ tool: nếu game cất tool đi thì lôi ra lại
+task.spawn(function()
+    while env.HubGen == myGen do
+        if cfg.autoEquip and cfg.equipTool ~= "" then
+            equipByName(cfg.equipTool)
+            task.wait(0.2)
+        else
+            task.wait(0.4)
+        end
+    end
+end)
+
+-- ---------------- Phát hiện Dual Orb / DF hiếm ----------------
+local BOSS_NAME      = "Emerald Swordsman"
+local BEHIND_DIST    = 3
+local SWORD_NAME     = "" -- để trống: dùng tool đang cầm và click chuột
+local BOSS_SCAN_TIME = 12
+local FIGHT_TIMEOUT  = 300
+local DROP_WAIT      = 6
+local farmToggle, huntToggle
+local orbNotified = false
+
+local function getBoss()
+    local w = workspace:FindFirstChild("World")
+    local p = w and w:FindFirstChild("Playability")
+    local f = p and p:FindFirstChild("Enemys")
+    local b = f and f:FindFirstChild(BOSS_NAME)
+    local h = b and b:FindFirstChildOfClass("Humanoid")
+    if b and h and h.Health > 0 and b:FindFirstChild("HumanoidRootPart") then
+        return b
+    end
+    return nil
+end
+
+local function hasDualOrb()
+    for _, c in ipairs({LocalPlayer:FindFirstChildOfClass("Backpack"), LocalPlayer.Character}) do
+        if c then
+            for _, t in ipairs(c:GetChildren()) do
+                if t:IsA("Tool") and t.Name:lower():find("dual orb", 1, true) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function onDualOrb()
+    if orbNotified then return end
+    orbNotified = true
+    cfg.farmBoss, cfg.huntBoss, cfg.rareStop = false, false, true
+    cfg.autoLoot = false
+    cancelFlag = true
+    pcall(function() if farmToggle then farmToggle:Set(false) end end)
+    pcall(function() if huntToggle then huntToggle:Set(false) end end)
+    pcall(function() if autoToggle then autoToggle:Set(false) end end)
+    saveConfig()
+    setStatus("🔮 Nhặt được Dual Orb → đã dừng, không hop nữa", GREEN)
+    task.spawn(function()
+        task.wait(1.5)
+        local ok, err = postWebhook({
+            title = "🔮 Nhặt được Dual Orb!",
+            color = 0xAA55FF,
+            fields = {
+                {name = "Beli hiện tại", value = getBeli(), inline = true},
+                {name = "Server (JobId)", value = tostring(JobId), inline = false},
+            },
+            footer = {text = LocalPlayer.Name},
+            timestamp = DateTime.now():ToIsoDate(),
+        })
+        if not ok then warn("[Hub] Webhook Dual Orb lỗi: " .. tostring(err)) end
+    end)
+end
+
+local function swing()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    local tool = char:FindFirstChildOfClass("Tool")
+    if SWORD_NAME ~= "" and not (tool and tool.Name == SWORD_NAME) then
+        local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+        local t = bp and bp:FindFirstChild(SWORD_NAME)
+        if t then
+            pcall(function() hum:EquipTool(t) end)
+            tool = t
+        end
+    end
+
+    if tool then pcall(function() tool:Activate() end) end
+    local vs = workspace.CurrentCamera.ViewportSize
+    pcall(function()
+        VIM:SendMouseButtonEvent(vs.X / 2, vs.Y / 2, 0, true, game, 1)
+        VIM:SendMouseButtonEvent(vs.X / 2, vs.Y / 2, 0, false, game, 1)
+    end)
+end
+
+local function fightBoss(boss)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local bh = boss:FindFirstChild("HumanoidRootPart")
+    if not (root and bh) then return end
+
+    setStatus("⚔️ Bay ra sau " .. BOSS_NAME .. "...", YELLOW)
+    SafeTween((bh.CFrame * CFrame.new(0, 0, BEHIND_DIST)).Position, cfg.islandSpeed, 0)
+    if cancelFlag then return end
+
+    local conn = RunService.Heartbeat:Connect(function()
+        local h = boss:FindFirstChild("HumanoidRootPart")
+        if h and root.Parent then
+            local pos = (h.CFrame * CFrame.new(0, 0, BEHIND_DIST)).Position
+            root.CFrame = CFrame.lookAt(pos, Vector3.new(h.Position.X, pos.Y, h.Position.Z))
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+    end)
+
+    setStatus("⚔️ Đang đánh " .. BOSS_NAME .. "...", GREEN)
+    local t0 = tick()
+    while not cancelFlag and boss.Parent and tick() - t0 < FIGHT_TIMEOUT do
+        local h = boss:FindFirstChildOfClass("Humanoid")
+        if not h or h.Health <= 0 then break end
+        swing()
+        task.wait(0.12)
+    end
+    conn:Disconnect()
+end
+
+local function afterBossDie()
+    setStatus("Boss chết, đợi drop...", YELLOW)
+    local t0 = tick()
+    while tick() - t0 < DROP_WAIT and not cancelFlag and not getDF() do
+        task.wait(0.2)
+    end
+    if getDF() and not cancelFlag then pickupDF(nil) end
+    waitCancelable(1.5)
+    if hasDualOrb() then onDualOrb(); return true end
+    return false
+end
+
+local function farmLoop()
+    waitCancelable(3)
+    while not cancelFlag and env.HubGen == myGen do
+        local boss = getBoss()
+        if boss then
+            fightBoss(boss)
+            if cancelFlag then break end
+            if afterBossDie() then break end
+        else
+            setStatus("Chờ " .. BOSS_NAME .. " hồi sinh...", YELLOW)
+            waitCancelable(1)
+        end
+    end
+end
+
+local function huntLoop()
+    waitCancelable(3)
+    while not cancelFlag and env.HubGen == myGen do
+        local t0 = tick()
+        setStatus("Đang tìm " .. BOSS_NAME .. "...", YELLOW)
+        while not cancelFlag and tick() - t0 < BOSS_SCAN_TIME and not getBoss() do
+            task.wait(0.5)
+        end
+        if cancelFlag then break end
+        local boss = getBoss()
+        if boss then
+            fightBoss(boss)
+            if cancelFlag then break end
+            if afterBossDie() then break end
+        else
+            setStatus("Không thấy boss → hop server", YELLOW)
+        end
+        if cancelFlag then break end
+        doHop()
+        waitCancelable(20)
+    end
+end
+
+-- ---------------- Phát hiện nhặt được DF hiếm ----------------
+local seenTools = setmetatable({}, {__mode = "k"})
+
+local function matchSelectedFruit(toolName)
+    local n = toolName:lower()
+    for _, f in ipairs(RARE_FRUITS) do
+        if cfg.fruits[f.key] and n:find(f.key, 1, true) then return f.name end
+    end
+end
+
+local function onRareFruit(fruitName)
+    print("[Hub] Nhặt được DF hiếm: " .. fruitName)
+    task.spawn(function()
+        task.wait(1.5)
+        local ok, err = sendWebhook(fruitName, false)
+        if not ok then warn("[Hub] Webhook lỗi: " .. tostring(err)) end
+    end)
+    if cfg.stopOnRare then
+        cfg.rareStop = true
+        cfg.autoLoot = false
+        if current then cancelFlag = true end
+        pcall(function() autoToggle:Set(false) end)
+        saveConfig()
+        setStatus("🎉 Nhặt được " .. fruitName .. " → đã dừng loot/hop", GREEN)
+    else
+        setStatus("🎉 Nhặt được " .. fruitName .. "!", GREEN)
+    end
+end
+
+local function watchTool(tool, graceUntil)
+    if env.HubGen ~= myGen then return end
+    if not tool:IsA("Tool") or seenTools[tool] then return end
+    seenTools[tool] = true
+    if tick() < graceUntil then return end
+    if lootActive then lootStats.items[#lootStats.items + 1] = tool.Name end
+    if tool.Name:lower():find("dual orb", 1, true) then onDualOrb() end
+    local fruit = matchSelectedFruit(tool.Name)
+    if fruit then onRareFruit(fruit) end
+end
+
+local function bindInventory()
+    local graceUntil = tick() + 8
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack", 10)
+    local function hook(container)
+        if not container then return end
+        for _, t in ipairs(container:GetChildren()) do seenTools[t] = true end
+        container.ChildAdded:Connect(function(t) watchTool(t, graceUntil) end)
+    end
+    hook(bp)
+    hook(LocalPlayer.Character)
+end
+
+task.spawn(bindInventory)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    if env.HubGen ~= myGen then return end
+    task.wait(1)
+    bindInventory()
+end)
+
+-- =====================================================================
+--  PANEL NHỎ: DF HIẾM + WEBHOOK
+-- =====================================================================
+local oldPanel = parentGui:FindFirstChild("HubFruit_UI")
+if oldPanel then oldPanel:Destroy() end
+
+local pgui = Instance.new("ScreenGui")
+pgui.Name = "HubFruit_UI"
+pgui.ResetOnSpawn = false
+pgui.DisplayOrder = 998
+pgui.Parent = parentGui
+
+local panel = Instance.new("Frame", pgui)
+panel.Size = UDim2.new(0, 270, 0, 300)
+panel.Position = UDim2.new(0, 10, 0.3, 0)
+panel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+panel.BackgroundTransparency = 0.1
+panel.BorderSizePixel = 0
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+local title = Instance.new("TextLabel", panel)
+title.Size = UDim2.new(1, 0, 0, 28)
+title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+title.BorderSizePixel = 0
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Text = "DF HIẾM & WEBHOOK"
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 8)
+
+local minBtn = Instance.new("TextButton", title)
+minBtn.Size = UDim2.new(0, 28, 0, 28)
+minBtn.Position = UDim2.new(1, -28, 0, 0)
+minBtn.BackgroundTransparency = 1
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 16
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.Text = "–"
+
+local body = Instance.new("Frame", panel)
+body.Size = UDim2.new(1, 0, 1, -28)
+body.Position = UDim2.new(0, 0, 0, 28)
+body.BackgroundTransparency = 1
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    body.Visible = not minimized
+    panel.Size = minimized and UDim2.new(0, 270, 0, 28) or UDim2.new(0, 270, 0, 300)
+    minBtn.Text = minimized and "+" or "–"
+end)
+
+local dragging, dragInput, dragStart, startPos
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = panel.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                   startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local function mkLabel(y, text)
+    local l = Instance.new("TextLabel", body)
+    l.Size = UDim2.new(1, -20, 0, 18)
+    l.Position = UDim2.new(0, 10, 0, y)
+    l.BackgroundTransparency = 1
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Font = Enum.Font.GothamMedium
+    l.TextSize = 12
+    l.TextColor3 = Color3.fromRGB(200, 200, 200)
+    l.Text = text
+    return l
+end
+
+local function mkButton(pos, size, text, color, cb)
+    local b = Instance.new("TextButton", body)
+    b.Position = pos
+    b.Size = size
+    b.BackgroundColor3 = color
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Text = text
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    if cb then b.MouseButton1Click:Connect(cb) end
+    return b
+end
+
+local C_ON, C_OFF, C_BAD = Color3.fromRGB(40, 150, 70), Color3.fromRGB(90, 90, 90), Color3.fromRGB(150, 60, 60)
+
+mkLabel(2, "Webhook Discord (dán URL đầy đủ):")
+
+local whBox = Instance.new("TextBox", body)
+whBox.Position = UDim2.new(0, 10, 0, 24)
+whBox.Size = UDim2.new(1, -20, 0, 28)
+whBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+whBox.BorderSizePixel = 0
+whBox.Font = Enum.Font.Gotham
+whBox.TextSize = 11
+whBox.TextColor3 = Color3.new(1, 1, 1)
+whBox.PlaceholderText = "https://discord.com/api/webhooks/ID/TOKEN"
+whBox.ClearTextOnFocus = false
+whBox.ClipsDescendants = true
+whBox.TextXAlignment = Enum.TextXAlignment.Left
+whBox.Text = cfg.webhook
+Instance.new("UICorner", whBox).CornerRadius = UDim.new(0, 6)
+
+whBox.FocusLost:Connect(function()
+    local t = whBox.Text:gsub("%s+", "")
+    cfg.webhook = t
+    whBox.Text = t
+    saveSoon()
+end)
+
+mkLabel(56, "DF hiếm cần nhặt (bấm để chọn):")
+
+for i, f in ipairs(RARE_FRUITS) do
+    local b = mkButton(UDim2.new(0, 10, 0, 76 + (i - 1) * 32), UDim2.new(1, -20, 0, 28), "", C_OFF)
+    local function style()
+        local on = cfg.fruits[f.key]
+        b.Text = (on and "✔  " or "✖  ") .. f.name
+        b.BackgroundColor3 = on and C_ON or C_OFF
+    end
+    style()
+    b.MouseButton1Click:Connect(function()
+        cfg.fruits[f.key] = not cfg.fruits[f.key]
+        style()
+        saveSoon()
+    end)
+end
+
+local function styleToggle(btn, text, on)
+    btn.Text = text .. (on and ": BẬT" or ": TẮT")
+    btn.BackgroundColor3 = on and C_ON or C_BAD
+end
+
+local btnStopRare = mkButton(UDim2.new(0, 10, 0, 176), UDim2.new(1, -20, 0, 28), "", C_ON)
+styleToggle(btnStopRare, "Có DF hiếm → dừng loot/hop", cfg.stopOnRare)
+btnStopRare.MouseButton1Click:Connect(function()
+    cfg.stopOnRare = not cfg.stopOnRare
+    styleToggle(btnStopRare, "Có DF hiếm → dừng loot/hop", cfg.stopOnRare)
+    saveSoon()
+end)
+
+local btnHopAfter = mkButton(UDim2.new(0, 10, 0, 208), UDim2.new(1, -20, 0, 28), "", C_ON)
+styleToggle(btnHopAfter, "Hop server sau khi loot xong", cfg.hopAfter)
+btnHopAfter.MouseButton1Click:Connect(function()
+    cfg.hopAfter = not cfg.hopAfter
+    styleToggle(btnHopAfter, "Hop server sau khi loot xong", cfg.hopAfter)
+    saveSoon()
+end)
+
+mkButton(UDim2.new(0, 10, 0, 242), UDim2.new(0.5, -14, 0, 28), "📨 Gửi thử Webhook", Color3.fromRGB(88, 101, 242), function()
+    task.spawn(function()
+        setStatus("Đang gửi thử webhook...", YELLOW)
+        local ok, err = sendWebhook("(Test) Quake Fruit", true)
+        setStatus(ok and "✅ Webhook gửi OK!" or ("❌ Webhook lỗi: " .. tostring(err)), ok and GREEN or RED)
+    end)
+end)
+
+mkButton(UDim2.new(0.5, 4, 0, 242), UDim2.new(0.5, -14, 0, 28), "💾 Lưu Config", Color3.fromRGB(50, 120, 200), function()
+    local ok = saveConfig()
+    setStatus(ok and "💾 Đã lưu config" or "❌ Lưu config lỗi (xem F9)", ok and GREEN or RED)
+end)
+
+-- =====================================================================
+--  GIAO DIỆN (Pepsi's library)
+-- =====================================================================
+local uiReady = false   -- chặn callback bắn lúc UI vừa tạo làm ghi đè config
+
+local function start(name, fn)
+    cfg.rareStop = false
+    runTask(name, fn)
+end
+
+local function setAutoLoot(v)
+    cfg.autoLoot = v
+    saveSoon()
+    if v then
+        if current == "Auto Loot" then return end
+        if current then
+            setStatus("Đang bận: " .. current .. " → tắt việc đó trước", RED)
+            cfg.autoLoot = false
+            pcall(function() autoToggle:Set(false) end)
+            return
+        end
+        start("Auto Loot", autoLootLoop)
+    else
+        if current == "Auto Loot" then
+            cancelFlag = true
+            setStatus("Đang dừng Auto Loot...", RED)
+        end
+    end
+end
+
+local function toggleTask(name, key, fn, getToggle, value)
+    cfg[key] = value
+    saveSoon()
+    if value then
+        if current == name then return end
+        if current then
+            setStatus("Đang bận: " .. current .. " → tắt việc đó trước", RED)
+            cfg[key] = false
+            local ref = getToggle()
+            pcall(function() if ref then ref:Set(false) end end)
+            return
+        end
+        start(name, fn)
+    elseif current == name then
+        cancelFlag = true
+        setStatus("Đang dừng " .. name .. "...", RED)
+    end
+end
+
+local Window = library:CreateWindow({
+    Name = "Mega Utility Hub",
+    Themeable = {
+        Info = "Loot Chest | Scan DF | Instant Kill | Auto M1 | Equip Tool | Hop"
+    }
+})
+
+local MainTab = Window:CreateTab({
+    Name = "Hub"
+})
+
+-- ---------- Farm ----------
+local FarmSection = MainTab:CreateSection({
+    Name = "Farm"
+})
+
+FarmSection:AddButton({
+    Name = "Loot Chest 5 Đảo (bấm lại để dừng)",
+    Callback = function() start("Loot Chest", lootChests) end
+})
+
+autoToggle = FarmSection:AddToggle({
+    Name = "Auto Loot Chest + Quét DF",
+    Flag = "Farm_AutoLoot",
+    Value = cfg.autoLoot,
+    Callback = function(v)
+        if not uiReady then return end
+        setAutoLoot(v and true or false)
+    end
+})
+
+FarmSection:AddSlider({
+    Name = "Chest Load Delay",
+    Flag = "Farm_LoadDelay",
+    Value = cfg.loadDelay,
+    Min = 0.5,
+    Max = 6,
+    Precise = 1,
+    Format = function(v) return "Chờ load Chest: " .. tostring(v) .. "s" end,
+    Callback = function(v) cfg.loadDelay = v; saveSoon() end
+})
+
+FarmSection:AddButton({
+    Name = "Quét & Nhặt DF (bấm lại để dừng)",
+    Callback = function() start("Quét DF", scanDF) end
+})
+
+FarmSection:AddToggle({
+    Name = "Instant Kill",
+    Flag = "Farm_InstantKill",
+    Value = killEnabled,
+    Callback = function(v)
+        killEnabled = v
+        setStatus(v and "Instant Kill: BẬT" or "Instant Kill: TẮT", v and GREEN or WHITE)
+        if uiReady then saveSoon() end
+    end
+})
+
+FarmSection:AddSlider({
+    Name = "Kill Threshold",
+    Flag = "Farm_KillThreshold",
+    Value = math.floor(killThreshold * 100 + 0.5),
+    Min = 1,
+    Max = 100,
+    Format = function(v) return "Kill khi quái còn ≤ " .. tostring(v) .. "% HP" end,
+    Callback = function(v) killThreshold = v / 100; saveSoon() end
+})
+
+farmToggle = FarmSection:AddToggle({
+    Name = "Farm Dual Orb (Emerald Swordsman)",
+    Flag = "Farm_Boss",
+    Value = cfg.farmBoss,
+    Callback = function(v)
+        if not uiReady then return end
+        toggleTask("Farm Boss", "farmBoss", farmLoop, function() return farmToggle end, v and true or false)
+    end
+})
+
+huntToggle = FarmSection:AddToggle({
+    Name = "Hop Server tìm Boss + Farm",
+    Flag = "Farm_HuntBoss",
+    Value = cfg.huntBoss,
+    Callback = function(v)
+        if not uiReady then return end
+        toggleTask("Hunt Boss", "huntBoss", huntLoop, function() return huntToggle end, v and true or false)
+    end
+})
+
+-- ---------- [MỚI] Combat & Tool ----------
+local CombatSection = MainTab:CreateSection({
+    Name = "Combat & Tool"
+})
+
+CombatSection:AddToggle({
+    Name = "Auto M1 (đánh thường)",
+    Flag = "Combat_AutoM1",
+    Value = cfg.autoM1,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoM1 = v and true or false
+        setStatus(cfg.autoM1 and "Auto M1: BẬT" or "Auto M1: TẮT", cfg.autoM1 and GREEN or WHITE)
+        saveSoon()
+    end
+})
+
+CombatSection:AddSlider({
+    Name = "M1 Delay",
+    Flag = "Combat_M1Delay",
+    Value = cfg.m1Delay,
+    Min = 0.1,
+    Max = 1,
+    Precise = 2,
+    Format = function(v) return "Delay mỗi đòn: " .. tostring(v) .. "s" end,
+    Callback = function(v) cfg.m1Delay = v; saveSoon() end
+})
+
+local equipDrop
+
+local function buildToolList()
+    local list = getToolNames()
+    -- giữ tool đã lưu trong list để dropdown hiển thị đúng dù đang không có trong balo
+    if cfg.equipTool ~= "" and not table.find(list, cfg.equipTool) then
+        table.insert(list, cfg.equipTool)
+    end
+    if #list == 0 then list = {NO_TOOL} end
+    return list
+end
+
+local function refreshToolList(silent)
+    local list = buildToolList()
+    local done = false
+    if equipDrop then
+        for _, method in ipairs({"Refresh", "SetList", "UpdateList"}) do
+            if type(equipDrop[method]) == "function" then
+                local ok = pcall(function() equipDrop[method](equipDrop, list) end)
+                if ok then done = true break end
+            end
+        end
+    end
+    if not silent then
+        if done then
+            setStatus("🔄 Đã cập nhật danh sách tool (" .. #getToolNames() .. " tool)", GREEN)
+        else
+            setStatus("❌ Library không hỗ trợ refresh dropdown", RED)
+        end
+    end
+end
+
+equipDrop = CombatSection:AddDropdown({
+    Name = "Chọn Tool để cầm",
+    Flag = "Combat_EquipTool",
+    Value = cfg.equipTool ~= "" and cfg.equipTool or nil,
+    List = buildToolList(),
+    Callback = function(v)
+        if not uiReady then return end
+        if type(v) ~= "string" or v == NO_TOOL then return end
+        cfg.equipTool = v
+        saveSoon()
+        equipByName(v)   -- cầm luôn khi vừa chọn
+        setStatus("Đã chọn tool: " .. v, GREEN)
+    end
+})
+
+CombatSection:AddButton({
+    Name = "🔄 Refresh danh sách Tool",
+    Callback = function() refreshToolList(false) end
+})
+
+CombatSection:AddToggle({
+    Name = "Giữ Tool đã chọn (Auto Equip)",
+    Flag = "Combat_AutoEquip",
+    Value = cfg.autoEquip,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoEquip = v and true or false
+        if cfg.autoEquip and cfg.equipTool == "" then
+            setStatus("Chưa chọn tool nào trong danh sách!", RED)
+        else
+            setStatus(cfg.autoEquip and "Auto Equip: BẬT" or "Auto Equip: TẮT", cfg.autoEquip and GREEN or WHITE)
+        end
+        saveSoon()
+    end
+})
+
+-- ---------- Teleport (Tween) ----------
+local TpSection = MainTab:CreateSection({
+    Name = "Teleport Đảo (Tween)",
+    Side = "Right"
+})
+
+TpSection:AddSlider({
+    Name = "Island Fly Speed",
+    Flag = "Tp_IslandSpeed",
+    Value = cfg.islandSpeed,
+    Min = 100,
+    Max = 2000,
+    Format = function(v) return "Tốc độ bay: " .. tostring(v) end,
+    Callback = function(v) cfg.islandSpeed = v; saveSoon() end
+})
+
+for i, isl in ipairs(ISLANDS) do
+    TpSection:AddButton({
+        Name = "Tween → " .. isl.Name,
+        Callback = function()
+            start("Bay " .. isl.Name, function()
+                setStatus("Đang bay tới " .. isl.Name .. "...", YELLOW)
+                local ok = SafeTween(isl.Pos, cfg.islandSpeed, ISLAND_Y)
+                if cancelFlag then
+                    setStatus("Đã hủy bay!", RED)
+                elseif ok then
+                    setStatus("Đã tới " .. isl.Name, GREEN)
+                else
+                    setStatus("Không bay được (đã chết?)", RED)
+                end
+            end)
+        end
+    })
+end
+
+-- ---------- Server ----------
+local ServerSection = MainTab:CreateSection({
+    Name = "Server",
+    Side = "Right"
+})
+
+ServerSection:AddButton({
+    Name = "Hop Server (random 2-5 người)",
+    Callback = function() start("Hop Server", doHop) end
+})
+
+-- ---------- Cấu hình ----------
+local CfgSection = MainTab:CreateSection({
+    Name = "Cấu hình",
+    Side = "Right"
+})
+
+CfgSection:AddToggle({
+    Name = "Auto Load Config",
+    Flag = "Cfg_AutoLoad",
+    Value = cfg.autoLoad,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoLoad = v
+        if writefile then pcall(writefile, AUTO_FILE, v and "1" or "0") end
+        if v then saveConfig() end
+        setStatus(v and "Auto Load Config: BẬT (lần sau tự nạp)" or "Auto Load Config: TẮT", v and GREEN or WHITE)
+    end
+})
+
+CfgSection:AddToggle({
+    Name = "Webhook khi loot xong",
+    Flag = "Cfg_WebhookSummary",
+    Value = cfg.webhookSummary,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.webhookSummary = v
+        saveSoon()
+    end
+})
+
+CfgSection:AddButton({
+    Name = "Lưu Config ngay",
+    Callback = function()
+        local ok = saveConfig()
+        setStatus(ok and "💾 Đã lưu config" or "❌ Lưu config lỗi (xem F9)", ok and GREEN or RED)
+    end
+})
+
+setStatus("Hub: sẵn sàng", GREEN)
+print("✅ Đã load Mega Utility Hub (Pepsi's library)")
+
+-- UI xong → mở khóa callback; nếu config lần trước đang bật thì tự chạy lại
+task.spawn(function()
+    task.wait(1.5)
+    uiReady = true
+    refreshToolList(true)   -- cập nhật lại list tool lúc mới vào
+
+    if cfg.autoLoad then
+        if cfg.huntBoss then
+            setStatus("Auto Load: tiếp tục tìm boss...", GREEN)
+            toggleTask("Hunt Boss", "huntBoss", huntLoop, function() return huntToggle end, true)
+        elseif cfg.farmBoss then
+            setStatus("Auto Load: tiếp tục farm boss...", GREEN)
+            toggleTask("Farm Boss", "farmBoss", farmLoop, function() return farmToggle end, true)
+        elseif cfg.autoLoot then
+            setStatus("Auto Load: tự bật Auto Loot...", GREEN)
+            setAutoLoot(true)
+        end
+    end
+end)
