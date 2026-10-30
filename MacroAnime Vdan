@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (AUTO VOTE SPAM CLICK)
+-- TUANH HUB - ALL IN ONE (AUTO VOTE 10S TIMEOUT)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -63,15 +63,11 @@ function T.findUnitAt(pos, nameFilter, exclude, timeout)
                 if not exclude[u] then 
                     local isNameMatch = true
                     if nameFilter and u.Name ~= nameFilter then isNameMatch = false end
-                    
                     if isNameMatch then
                         local p = T.pivotPos(u) 
                         if p then
                             local d = T.flat(p, pos)
-                            if d < minDist and d < 15 then 
-                                minDist = d
-                                closestUnit = u
-                            end
+                            if d < minDist and d < 15 then minDist = d; closestUnit = u end
                         end
                     end
                 end 
@@ -114,13 +110,11 @@ local function sendWebhook(reason)
     if not url or url == "" then return end
     if tick() - lastWebhookTime < 5 then return end
     lastWebhookTime = tick()
-    
     local mapName, gem, gold, xp = getStatsData()
     local title = reason == "Load" and "🚀 **Script Loaded!**" or "🔄 **Retry Map Detected!**"
     local body = HttpService:JSONEncode({
         content = string.format("%s\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", title, LocalPlayer.UserId, mapName, gem, gold, xp)
     })
-    
     task.spawn(function()
         local ok, err = pcall(function()
             if request then request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
@@ -156,11 +150,7 @@ function T.stopRec() T.recording = false T.status("Dừng ghi: " .. #T.rec .. " 
 
 function T.onCall(name, args, res)
     if name == "vote_start" then T.resetWave(); return end
-    
-    if name == "set_game_finished_vote" then
-        if args[1] == "replay" then sendWebhook("Retry") end
-    end
-
+    if name == "set_game_finished_vote" then if args[1] == "replay" then sendWebhook("Retry") end end
     if not T.recording or res[1] == false then return end
 
     if name == "spawn_unit" then
@@ -261,13 +251,14 @@ T.onEvent("start_vote_wave_skip", function() if T.settings.autoSkip and not T.de
 
 -- ================= VÒNG LẶP TỰ ĐỘNG BẤM NÚT =================
 local replayed = false
+local voteClickStart = 0 -- Biến đếm thời gian click Vote
 
 task.spawn(function()
     while task.wait(0.2) do
         if T.dead then break end
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         
-        -- AUTO VOTE YES (Spam click liên tục đến khi mất bảng)
+        -- AUTO VOTE YES (Giới hạn 10 giây để tránh kẹt chuột)
         if T.settings.autoStart then
             local voteStart = pg and pg:FindFirstChild("VoteStart")
             if voteStart then
@@ -275,20 +266,26 @@ task.spawn(function()
                 local btnHolder = holder and holder:FindFirstChild("ButtonHolder")
                 local yesBtn = btnHolder and btnHolder:FindFirstChild("Yes")
                 
-                -- Chỉ cần nút tồn tại và đang hiển thị là spam click liên tục
                 if yesBtn and yesBtn:IsA("TextButton") and yesBtn.Visible then
-                    -- Lấy tọa độ mới nhất (vì UI có thể đang trượt)
-                    local pos = yesBtn.AbsolutePosition + (yesBtn.AbsoluteSize / 2)
-                    local inset = GuiService:GetGuiInset()
+                    -- Bắt đầu tính giờ nếu chưa tính
+                    if voteClickStart == 0 then voteClickStart = tick() end
                     
-                    pcall(function()
-                        VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
-                        task.wait(0.02)
-                        VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
-                        task.wait(0.02)
-                        VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
-                    end)
+                    -- Chỉ click nếu chưa quá 10 giây
+                    if tick() - voteClickStart <= 30 then
+                        local pos = yesBtn.AbsolutePosition + (yesBtn.AbsoluteSize / 2)
+                        local inset = GuiService:GetGuiInset()
+                        pcall(function()
+                            VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
+                            task.wait(0.02)
+                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
+                            task.wait(0.02)
+                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
+                        end)
+                    end
                 end
+            else 
+                -- Reset lại thời gian khi bảng Vote biến mất
+                voteClickStart = 0 
             end
         end
         
