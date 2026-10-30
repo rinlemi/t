@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX AUTO VOTE YES CHUẨN XÁC)
+-- TUANH HUB - ALL IN ONE (AUTO VOTE SPAM CLICK)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -88,7 +88,6 @@ function T.waveElapsed() return os.clock() - T.waveStart end
 
 -- ================= WEBHOOK =================
 local lastWebhookTime = 0
-
 local function getStatsData()
     local stats = LocalPlayer:FindFirstChild("_stats")
     local gem, gold, xp = "N/A", "N/A", "N/A"
@@ -97,7 +96,6 @@ local function getStatsData()
         if stats:FindFirstChild("gold_amount") then gold = tostring(stats.gold_amount.Value) end
         if stats:FindFirstChild("player_xp") then xp = tostring(stats.player_xp.Value) end
     end
-    
     local mapName = "Unknown"
     local mapGui = LocalPlayer:FindFirstChild("PlayerGui")
     if mapGui then
@@ -118,7 +116,6 @@ local function sendWebhook(reason)
     lastWebhookTime = tick()
     
     local mapName, gem, gold, xp = getStatsData()
-    
     local title = reason == "Load" and "🚀 **Script Loaded!**" or "🔄 **Retry Map Detected!**"
     local body = HttpService:JSONEncode({
         content = string.format("%s\n👤 **UID:** %d\n🗺️ **Map:** %s\n💎 **Gem:** %s\n💰 **Gold:** %s\n🌟 **XP/Level:** %s", title, LocalPlayer.UserId, mapName, gem, gold, xp)
@@ -126,21 +123,12 @@ local function sendWebhook(reason)
     
     task.spawn(function()
         local ok, err = pcall(function()
-            if request then
-                request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
-            elseif syn and syn.request then
-                syn.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
-            elseif http and http.request then
-                http.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
-            else
-                HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson)
-            end
+            if request then request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            elseif syn and syn.request then syn.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            elseif http and http.request then http.request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
+            else HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson) end
         end)
-        if ok then
-            print("✅ [Webhook] Gửi thành công ("..reason..")!")
-        else
-            print("❌ [Webhook] Lỗi:", err)
-        end
+        if ok then print("✅ [Webhook] Gửi thành công ("..reason..")!") else print("❌ [Webhook] Lỗi:", err) end
     end)
 end
 
@@ -170,10 +158,7 @@ function T.onCall(name, args, res)
     if name == "vote_start" then T.resetWave(); return end
     
     if name == "set_game_finished_vote" then
-        if args[1] == "replay" then 
-            print("🔥 [Webhook] Bắt được tín hiệu Retry Map từ Server!")
-            sendWebhook("Retry") 
-        end
+        if args[1] == "replay" then sendWebhook("Retry") end
     end
 
     if not T.recording or res[1] == false then return end
@@ -274,8 +259,7 @@ T.onEvent("show_message", function(_, _, code) if code == "WAVE_COMPLETED" then 
 T.onEvent("replay_started", function() T.resetWave() end)
 T.onEvent("start_vote_wave_skip", function() if T.settings.autoSkip and not T.dead then task.delay(0.3, function() T.invoke("vote_wave_skip") end) end end)
 
--- VÒNG LẶP TỰ ĐỘNG BẤM NÚT
-local voted = false
+-- ================= VÒNG LẶP TỰ ĐỘNG BẤM NÚT =================
 local replayed = false
 
 task.spawn(function()
@@ -283,6 +267,7 @@ task.spawn(function()
         if T.dead then break end
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         
+        -- AUTO VOTE YES (Spam click liên tục đến khi mất bảng)
         if T.settings.autoStart then
             local voteStart = pg and pg:FindFirstChild("VoteStart")
             if voteStart then
@@ -290,30 +275,24 @@ task.spawn(function()
                 local btnHolder = holder and holder:FindFirstChild("ButtonHolder")
                 local yesBtn = btnHolder and btnHolder:FindFirstChild("Yes")
                 
-                -- FIX: Kiểm tra kích thước X > 5 để đảm bảo UI đã load xong hoàn toàn
-                if yesBtn and yesBtn:IsA("TextButton") and yesBtn.Visible and yesBtn.AbsoluteSize.X > 5 then
-                    if not voted then
-                        -- FIX: Đợi 0.5s để animation bung ra xong
-                        task.wait(0.5)
-                        
-                        -- Cập nhật lại vị trí mới nhất sau khi animation chạy xong
-                        local pos = yesBtn.AbsolutePosition + (yesBtn.AbsoluteSize / 2)
-                        local inset = GuiService:GetGuiInset()
-                        pcall(function()
-                            VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
-                            task.wait(0.05)
-                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
-                            task.wait(0.05)
-                            VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
-                        end)
-                        voted = true
-                    end
+                -- Chỉ cần nút tồn tại và đang hiển thị là spam click liên tục
+                if yesBtn and yesBtn:IsA("TextButton") and yesBtn.Visible then
+                    -- Lấy tọa độ mới nhất (vì UI có thể đang trượt)
+                    local pos = yesBtn.AbsolutePosition + (yesBtn.AbsoluteSize / 2)
+                    local inset = GuiService:GetGuiInset()
+                    
+                    pcall(function()
+                        VIM:SendMouseMoveEvent(pos.X + inset.X, pos.Y + inset.Y, game)
+                        task.wait(0.02)
+                        VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, true, game, 1)
+                        task.wait(0.02)
+                        VIM:SendMouseButtonEvent(pos.X + inset.X, pos.Y + inset.Y, 0, false, game, 1)
+                    end)
                 end
-            else 
-                voted = false 
             end
         end
         
+        -- AUTO REPLAY
         if T.settings.autoReplay then
             for _, gui in ipairs(pg:GetDescendants()) do
                 if gui:IsA("TextButton") and (string.lower(gui.Text):find("replay") or string.lower(gui.Text):find("play again")) then
@@ -478,4 +457,4 @@ task.delay(3, function()
     sendWebhook("Load")
 end)
 
-T.status("Tuanh Hub Loaded!.")
+T.status("Tuanh Hub Loaded!")
