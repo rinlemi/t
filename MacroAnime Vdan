@@ -478,4 +478,4 @@ task.delay(3, function()
     sendWebhook("Load")
 end)
 
-T.status("Tuanh Hub Loaded!")
+T.status("Tuanh Hub Loaded!.")
