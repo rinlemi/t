@@ -1,0 +1,955 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:GetService("Players").LocalPlayer
+game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+task.wait(5)
+
+local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local HttpService       = game:GetService("HttpService")
+local TeleportService   = game:GetService("TeleportService")
+local TweenService      = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VIM               = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+local PlaceId     = game.PlaceId
+local JobId       = game.JobId
+
+-- =====================================================================
+--  CẤU HÌNH
+-- =====================================================================
+local ISLANDS = {
+    {Name = "Đảo 1", Pos = Vector3.new(1015.36, 2.31, 2788.16)},
+    {Name = "Đảo 2", Pos = Vector3.new(3460.87, 69.48, 2649.14)},
+    {Name = "Đảo 3", Pos = Vector3.new(4111.75, 72.89, 398.32)},
+    {Name = "Đảo 4", Pos = Vector3.new(626.28, 105.77, -976.89)},
+    {Name = "Đảo 5", Pos = Vector3.new(-1050.31, 57.10, 182.55)},
+}
+local ISLAND_Y       = 10
+local LOOT_FLY_SPEED = 500
+local DF_SPEED       = 150
+local SCAN_DELAY     = 2.0
+local AUTO_LOOT_GAP  = 5
+
+local cfg = {
+    islandSpeed    = 800,
+    loadDelay      = 2.5,
+    hopAfter       = false,
+    autoLoot       = false,
+    autoM1         = false,
+    m1Delay        = 0.15,
+    autoEquip      = false,
+    equipTool      = "",
+    anchorBosses   = false, -- [MỚI] Neo Boss
+}
+
+-- =====================================================================
+--  TRẠNG THÁI
+-- =====================================================================
+local env = (getgenv and getgenv()) or _G
+env.HubGen = (env.HubGen or 0) + 1
+local myGen = env.HubGen
+
+local YELLOW = Color3.fromRGB(255, 200, 0)
+local GREEN  = Color3.fromRGB(0, 255, 100)
+local RED    = Color3.fromRGB(255, 80, 80)
+local WHITE  = Color3.fromRGB(230, 230, 230)
+
+local parentGui = (gethui and gethui()) or game:GetService("CoreGui")
+local oldGui = parentGui:FindFirstChild("HubStatus_UI")
+if oldGui then oldGui:Destroy() end
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "HubStatus_UI"
+sg.ResetOnSpawn = false
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+sg.Parent = parentGui
+
+local bar = Instance.new("TextLabel", sg)
+bar.Size = UDim2.new(0, 340, 0, 26)
+bar.Position = UDim2.new(0.5, -170, 0, 8)
+bar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+bar.BackgroundTransparency = 0.25
+bar.BorderSizePixel = 0
+bar.Font = Enum.Font.GothamMedium
+bar.TextSize = 13
+bar.TextColor3 = WHITE
+bar.Text = "Hub: sẵn sàng"
+Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 6)
+
+local function setStatus(text, color)
+    bar.Text = text
+    bar.TextColor3 = color or WHITE
+end
+
+local lootActive = false
+
+-- =====================================================================
+--  QUẢN LÝ TÁC VỤ
+-- =====================================================================
+local current = nil
+local cancelFlag = false
+
+local function runTask(name, fn)
+    if current == name then
+        cancelFlag = true
+        setStatus("Đang dừng...", RED)
+        return
+    end
+    if current then
+        setStatus("Đang bận: " .. current .. " (bấm lại nút đó để dừng)", RED)
+        return
+    end
+    current = name
+    cancelFlag = false
+    task.spawn(function()
+        local ok, err = xpcall(fn, function(e) return tostring(e) .. "\n" .. debug.traceback() end)
+        if not ok then
+            warn("[Hub] Lỗi: " .. tostring(err))
+            setStatus("Lỗi: " .. tostring(err):match("^[^\n]*"), RED)
+        end
+        lootActive = false
+        current = nil
+        cancelFlag = false
+    end)
+end
+
+local function waitCancelable(sec)
+    local t0 = tick()
+    while tick() - t0 < sec and not cancelFlag do task.wait(0.05) end
+end
+
+-- =====================================================================
+--  BAY BẰNG TWEEN
+-- =====================================================================
+local function SafeTween(targetPos, speed, yOffset)
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not (hum and root) or hum.Health <= 0 then return false end
+
+    local goal = targetPos + Vector3.new(0, yOffset or 0, 0)
+    local dist = (goal - root.Position).Magnitude
+    if dist < 5 then return true end
+
+    pcall(function()
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end)
+
+    local rot = root.CFrame - root.CFrame.Position
+    local tween = TweenService:Create(root,
+        TweenInfo.new(dist / math.max(speed, 1), Enum.EasingStyle.Linear),
+        {CFrame = CFrame.new(goal) * rot})
+
+    local finished, completed = false, false
+    local c1 = tween.Completed:Connect(function(state)
+        finished = true
+        completed = (state == Enum.PlaybackState.Completed)
+    end)
+    local c2 = RunService.Heartbeat:Connect(function()
+        if root.Parent then root.AssemblyLinearVelocity = Vector3.zero end
+    end)
+
+    tween:Play()
+    while not finished do
+        if cancelFlag or not root.Parent or hum.Health <= 0 then
+            tween:Cancel()
+            break
+        end
+        task.wait(0.05)
+    end
+    c1:Disconnect()
+    c2:Disconnect()
+    pcall(function()
+        root.AssemblyLinearVelocity = Vector3.zero
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end)
+    return completed
+end
+
+-- =====================================================================
+--  HOP SERVER (RANDOM)
+-- =====================================================================
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+local HOSTS = {"games.roblox.com", "games.roproxy.com"}
+local CACHE_TIME = 300
+local MAX_PAGES  = 2
+local serverCache = env.HubServerCache or {time = 0, list = {}}
+env.HubServerCache = serverCache
+
+local function httpGet(url)
+    if httpRequest then
+        local ok, res = pcall(httpRequest, {Url = url, Method = "GET"})
+        if ok and res and res.StatusCode == 200 then return res.Body end
+        return nil
+    end
+    local ok, body = pcall(game.HttpGet, game, url)
+    if ok then return body end
+    return nil
+end
+
+local function getPage(cursor, silent)
+    local hostIdx = 1
+    for attempt = 1, 4 do
+        local url = string.format(
+            "https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s",
+            HOSTS[hostIdx], PlaceId, cursor ~= "" and ("&cursor=" .. cursor) or "")
+        local body = httpGet(url)
+        if body then
+            local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+            if ok and type(data) == "table" and data.data then return data end
+        end
+        if attempt == 4 then break end
+        hostIdx = hostIdx % #HOSTS + 1
+        local wait = attempt * 4
+        if not silent then
+            setStatus(string.format("API bị giới hạn, thử lại sau %ds (%d/4)...", wait, attempt), YELLOW)
+        end
+        waitCancelable(wait)
+        if cancelFlag then return nil end
+    end
+    return nil
+end
+
+local function fetchServers(silent)
+    local servers, cursor = {}, ""
+    for page = 1, MAX_PAGES do
+        local res = getPage(cursor, silent)
+        if not res then
+            if page == 1 then return nil end
+            break
+        end
+        for _, s in ipairs(res.data) do
+            -- [SỬA] Random server nào cũng được, miễn là còn chỗ
+            if s.id ~= JobId and s.playing < s.maxPlayers then
+                servers[#servers + 1] = s
+            end
+        end
+        if not res.nextPageCursor then break end
+        cursor = res.nextPageCursor
+        waitCancelable(1.5)
+        if cancelFlag then return nil end
+    end
+    return servers
+end
+
+local function doHop()
+    local servers
+    if tick() - serverCache.time < CACHE_TIME and #serverCache.list > 0 then
+        servers = serverCache.list
+        setStatus("Dùng danh sách server đã lưu...", YELLOW)
+    else
+        setStatus("Đang lấy danh sách server...", YELLOW)
+        servers = fetchServers(false)
+        if cancelFlag then setStatus("Đã hủy hop!", RED) return end
+        if not servers then
+            setStatus("API vẫn bị chặn, đợi ~1 phút rồi bấm lại!", RED)
+            return
+        end
+        serverCache.time = tick()
+        serverCache.list = servers
+    end
+
+    if #servers == 0 then
+        setStatus("Không có server nào còn chỗ trống!", RED)
+        return
+    end
+
+    local chosen = servers[math.random(#servers)]
+    setStatus("Vào server (" .. chosen.playing .. "/" .. chosen.maxPlayers .. " người)...", GREEN)
+    task.wait(1)
+    pcall(function() TeleportService:TeleportToPlaceInstance(PlaceId, chosen.id, LocalPlayer) end)
+end
+
+task.spawn(function()
+    task.wait(8)
+    while env.HubGen == myGen do
+        local sleep = 30
+        if tick() - serverCache.time > CACHE_TIME - 30 then
+            local list = fetchServers(true)
+            if list and #list > 0 then
+                serverCache.time = tick()
+                serverCache.list = list
+            else
+                sleep = 120
+            end
+        end
+        task.wait(sleep)
+    end
+end)
+
+TeleportService.TeleportInitFailed:Connect(function()
+    setStatus("Teleport lỗi (server đầy?), bấm Hop lại", RED)
+end)
+
+-- =====================================================================
+--  DF: TÌM + BAY TỚI + BẤM E
+-- =====================================================================
+local dfSkipUntil = 0
+
+local function getDF()
+    local w = workspace:FindFirstChild("World")
+    local p = w and w:FindFirstChild("Playability")
+    local dt = p and p:FindFirstChild("DroppedTools")
+    return dt and dt:FindFirstChild("Handle")
+end
+
+local function getDFPrompt(df)
+    if not df then return nil end
+    return df:FindFirstChildWhichIsA("ProximityPrompt", true)
+        or (df.Parent and df.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
+end
+
+local function pressE(duration)
+    pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game) end)
+    waitCancelable(duration)
+    pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
+end
+
+local function pickupDF(returnPos)
+    for attempt = 1, 4 do
+        if cancelFlag then return false end
+        local df = getDF()
+        if not df then return true end
+        setStatus(string.format("🔥 Thấy DF! Bay tới nhặt (%d/4)...", attempt), GREEN)
+        SafeTween(df.Position, DF_SPEED, 2)
+        if cancelFlag then return false end
+        waitCancelable(0.4)
+        local cur = getDF()
+        if cur then
+            local prompt = getDFPrompt(cur)
+            local hold = prompt and prompt.HoldDuration or 0
+            pressE(math.max(hold, 0.3) + 0.2)
+            waitCancelable(0.5)
+            if getDF() and not cancelFlag and prompt and fireproximityprompt then
+                pcall(function() fireproximityprompt(prompt) end)
+                waitCancelable(0.5)
+            end
+        end
+        if not getDF() then
+            setStatus("✅ Đã nhặt DF!", GREEN)
+            if returnPos and not cancelFlag then
+                SafeTween(returnPos, cfg.islandSpeed, ISLAND_Y)
+            end
+            return true
+        end
+    end
+    dfSkipUntil = tick() + 20
+    setStatus("Nhặt DF thất bại, bỏ qua 20s", RED)
+    return false
+end
+
+local function tryDF(returnPos)
+    if cancelFlag or tick() < dfSkipUntil then return 0 end
+    if not getDF() then return 0 end
+    return pickupDF(returnPos) and 1 or 0
+end
+
+-- =====================================================================
+--  LOOT CHEST
+-- =====================================================================
+local function getChestFolder()
+    local w = workspace:FindFirstChild("World")
+    local p = w and w:FindFirstChild("Playability")
+    return p and p:FindFirstChild("Chests")
+end
+
+local function CollectChestsOnIsland(islPos, withDF)
+    local chestFolder = getChestFolder()
+    if not chestFolder then return 0, 0 end
+    local collected, dfGot = 0, 0
+    for _, chest in ipairs(chestFolder:GetChildren()) do
+        if cancelFlag then break end
+        if withDF then
+            dfGot += tryDF(islPos)
+            if cancelFlag then break end
+        end
+        if chest:IsA("Model") then
+            local prompt = chest:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt and fireproximityprompt then
+                pcall(function() fireproximityprompt(prompt) end)
+                collected += 1
+                task.wait(0.2)
+            else
+                local hitbox = chest:FindFirstChild("Hitbox") or chest:FindFirstChild("RootPart")
+                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hitbox and root then
+                    root.CFrame = CFrame.new(hitbox.Position + Vector3.new(0, 2, 0))
+                    collected += 1
+                    task.wait(0.15)
+                end
+            end
+        end
+    end
+    return collected, dfGot
+end
+
+local function lootRoute(withDF)
+    local route = {}
+    for _, isl in ipairs(ISLANDS) do route[#route + 1] = isl end
+    route[#route + 1] = ISLANDS[1]
+
+    lootActive = true
+    local totalChest, totalDF = 0, 0
+
+    for i, isl in ipairs(route) do
+        if cancelFlag then break end
+        setStatus(string.format("Đang bay tới %s (%d/%d)...", isl.Name, i, #route), YELLOW)
+        SafeTween(isl.Pos, LOOT_FLY_SPEED, ISLAND_Y)
+        if cancelFlag then break end
+
+        setStatus("Đang tải Chest " .. isl.Name .. "...", YELLOW)
+        local t0 = tick()
+        while tick() - t0 < cfg.loadDelay and not cancelFlag do
+            if withDF then totalDF += tryDF(isl.Pos) end
+            task.wait(0.1)
+        end
+        if cancelFlag then break end
+
+        setStatus("Đang nhặt Chest " .. isl.Name .. "...", YELLOW)
+        local c, d = CollectChestsOnIsland(isl.Pos, withDF)
+        totalChest += c
+        totalDF += d
+        print(string.format("[Hub] %s: %d chest, %d DF", isl.Name, c, d))
+        if withDF then totalDF += tryDF(isl.Pos) end
+        waitCancelable(0.5)
+    end
+
+    lootActive = false
+    local summary = withDF
+        and string.format("Chest: %d | DF: %d", totalChest, totalDF)
+        or  string.format("Tổng cộng: %d Chest", totalChest)
+
+    if cancelFlag then
+        setStatus("Đã dừng! " .. summary, RED)
+    else
+        setStatus("Xong! " .. summary, GREEN)
+        if cfg.hopAfter then
+            task.wait(1)
+            doHop()
+        end
+    end
+end
+
+local function lootChests() lootRoute(false) end
+local autoToggle
+
+local function autoLootLoop()
+    waitCancelable(3)
+    while not cancelFlag and env.HubGen == myGen do
+        lootRoute(true)
+        if cancelFlag then break end
+        if cfg.hopAfter then
+            waitCancelable(20)
+        else
+            setStatus("Xong vòng, nghỉ " .. AUTO_LOOT_GAP .. "s rồi loot tiếp...", GREEN)
+            waitCancelable(AUTO_LOOT_GAP)
+        end
+    end
+end
+
+-- =====================================================================
+--  QUÉT DF
+-- =====================================================================
+local function scanDF()
+    if getDF() then
+        setStatus("DF đã ở ngay đây!", GREEN)
+        pickupDF(nil)
+        return
+    end
+    for i, isl in ipairs(ISLANDS) do
+        if cancelFlag then break end
+        setStatus(string.format("Bay tới %s (%d/%d)...", isl.Name, i, #ISLANDS), YELLOW)
+        SafeTween(isl.Pos, cfg.islandSpeed, ISLAND_Y)
+        if cancelFlag then break end
+        setStatus("Đang quét " .. isl.Name .. "...", YELLOW)
+        local t0 = tick()
+        while tick() - t0 < SCAN_DELAY and not cancelFlag do
+            if getDF() then
+                setStatus("🔥 TÌM THẤY DF tại " .. isl.Name .. "!", GREEN)
+                pickupDF(nil)
+                return
+            end
+            task.wait(0.1)
+        end
+    end
+    if cancelFlag then
+        setStatus("Đã hủy quét DF!", RED)
+    else
+        setStatus("Đã quét hết 5 đảo, không thấy DF!", RED)
+    end
+end
+
+-- =====================================================================
+--  ANCHOR BOSS (NEO BOSS)
+-- =====================================================================
+local anchoredParts = {}
+
+local function clearAnchors()
+    for part, _ in pairs(anchoredParts) do
+        if part and part.Parent then
+            pcall(function() part.Anchored = false end)
+        end
+    end
+    anchoredParts = {}
+end
+
+task.spawn(function()
+    while env.HubGen == myGen do
+        if cfg.anchorBosses then
+            local char = LocalPlayer.Character
+            local myHrp = char and char:FindFirstChild("HumanoidRootPart")
+            if myHrp then
+                local enemies = workspace:FindFirstChild("World") and workspace.World:FindFirstChild("Playability") and workspace.World.Playability:FindFirstChild("Enemys")
+                if enemies then
+                    for _, enemy in ipairs(enemies:GetChildren()) do
+                        if enemy:IsA("Model") then
+                            local hrp = enemy:FindFirstChild("HumanoidRootPart")
+                            local hum = enemy:FindFirstChildOfClass("Humanoid")
+                            if hrp and hum and hum.Health > 0 then
+                                local dist = (hrp.Position - myHrp.Position).Magnitude
+                                if dist <= 1000 then
+                                    if not hrp.Anchored then
+                                        hrp.Anchored = true
+                                        anchoredParts[hrp] = true
+                                    end
+                                else
+                                    if anchoredParts[hrp] then
+                                        hrp.Anchored = false
+                                        anchoredParts[hrp] = nil
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.5)
+        else
+            if next(anchoredParts) then
+                clearAnchors()
+            end
+            task.wait(1)
+        end
+    end
+    clearAnchors() -- Dọn dẹp khi script bị tắt
+end)
+
+-- =====================================================================
+--  CONFIG (lưu file)
+-- =====================================================================
+local CONFIG_FILE = "MegaHub_Config.json"
+local AUTO_FILE   = "MegaHub_AutoLoad.txt"
+
+cfg.autoLoad = true
+
+local function saveConfig()
+    if not writefile then return false end
+    local data = {
+        hopAfter       = cfg.hopAfter,
+        loadDelay      = cfg.loadDelay,
+        islandSpeed    = cfg.islandSpeed,
+        autoLoot       = cfg.autoLoot,
+        autoM1         = cfg.autoM1,
+        m1Delay        = cfg.m1Delay,
+        autoEquip      = cfg.autoEquip,
+        equipTool      = cfg.equipTool,
+        anchorBosses   = cfg.anchorBosses,
+    }
+    local ok, err = pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(data)) end)
+    if not ok then warn("[Hub] Lưu config lỗi: " .. tostring(err)) end
+    return ok
+end
+
+local function loadConfig()
+    if not (isfile and readfile and isfile(CONFIG_FILE)) then return end
+    local ok, d = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
+    if not ok or type(d) ~= "table" then return end
+
+    if type(d.hopAfter) == "boolean" then cfg.hopAfter = d.hopAfter end
+    if type(d.autoLoot) == "boolean" then cfg.autoLoot = d.autoLoot end
+    if type(d.autoM1) == "boolean" then cfg.autoM1 = d.autoM1 end
+    if type(d.autoEquip) == "boolean" then cfg.autoEquip = d.autoEquip end
+    if type(d.equipTool) == "string" then cfg.equipTool = d.equipTool end
+    if type(d.m1Delay) == "number" then cfg.m1Delay = math.clamp(d.m1Delay, 0.1, 1) end
+    if type(d.loadDelay) == "number" then cfg.loadDelay = math.clamp(d.loadDelay, 0.5, 6) end
+    if type(d.islandSpeed) == "number" then cfg.islandSpeed = math.clamp(d.islandSpeed, 100, 2000) end
+    if type(d.anchorBosses) == "boolean" then cfg.anchorBosses = d.anchorBosses end
+end
+
+if isfile and readfile and isfile(AUTO_FILE) then
+    local okf, txt = pcall(readfile, AUTO_FILE)
+    if okf then cfg.autoLoad = (txt ~= "0") end
+end
+if cfg.autoLoad then loadConfig() end
+
+local saveToken = 0
+local function saveSoon()
+    saveToken += 1
+    local my = saveToken
+    task.delay(1, function()
+        if my == saveToken then saveConfig() end
+    end)
+end
+
+-- =====================================================================
+--  AUTO M1 (chạy nền)
+-- =====================================================================
+local function getCombatRemotes()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return nil, nil end
+    local combat = remotes:FindFirstChild("Combat Event")
+    local ve = remotes:FindFirstChild("Visual Event")
+    local visual = ve and ve:FindFirstChild("Replicated")
+    return combat, visual
+end
+
+task.spawn(function()
+    while env.HubGen == myGen do
+        if cfg.autoM1 then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if char and hum and hum.Health > 0 and not hum.Sit then
+                local combat, visual = getCombatRemotes()
+                if visual then
+                    pcall(function()
+                        visual:FireServer("Crimson SwordVFX", "M1Custom", char, 1)
+                    end)
+                end
+                if combat then
+                    pcall(function() combat:FireServer(1) end)
+                end
+            end
+            task.wait(math.max(cfg.m1Delay, 0.1))
+        else
+            task.wait(0.25)
+        end
+    end
+end)
+
+-- =====================================================================
+--  EQUIP TOOL
+-- =====================================================================
+local NO_TOOL = "(không có tool)"
+
+local function getToolNames()
+    local names, seen = {}, {}
+    local function scan(container)
+        if not container then return end
+        for _, t in ipairs(container:GetChildren()) do
+            if t:IsA("Tool") and not seen[t.Name] then
+                seen[t.Name] = true
+                names[#names + 1] = t.Name
+            end
+        end
+    end
+    scan(LocalPlayer:FindFirstChildOfClass("Backpack"))
+    scan(LocalPlayer.Character)
+    table.sort(names)
+    return names
+end
+
+local function equipByName(name)
+    if not name or name == "" or name == NO_TOOL then return false end
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    if char:FindFirstChild(name) then return true end
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    local tool = bp and bp:FindFirstChild(name)
+    if tool and tool:IsA("Tool") then
+        pcall(function() hum:EquipTool(tool) end)
+        return true
+    end
+    return false
+end
+
+task.spawn(function()
+    while env.HubGen == myGen do
+        if cfg.autoEquip and cfg.equipTool ~= "" then
+            equipByName(cfg.equipTool)
+            task.wait(0.2)
+        else
+            task.wait(0.4)
+        end
+    end
+end)
+
+-- =====================================================================
+--  GIAO DIỆN (Pepsi's library)
+-- =====================================================================
+local uiReady = false
+
+local function start(name, fn)
+    runTask(name, fn)
+end
+
+local function setAutoLoot(v)
+    cfg.autoLoot = v
+    saveSoon()
+    if v then
+        if current == "Auto Loot" then return end
+        if current then
+            setStatus("Đang bận: " .. current .. " → tắt việc đó trước", RED)
+            cfg.autoLoot = false
+            pcall(function() autoToggle:Set(false) end)
+            return
+        end
+        start("Auto Loot", autoLootLoop)
+    else
+        if current == "Auto Loot" then
+            cancelFlag = true
+            setStatus("Đang dừng Auto Loot...", RED)
+        end
+    end
+end
+
+local Window = library:CreateWindow({
+    Name = "Mega Utility Hub",
+    Themeable = {
+        Info = "Loot Chest | Scan DF | Auto M1 | Equip Tool | Anchor Boss | Hop"
+    }
+})
+
+local MainTab = Window:CreateTab({
+    Name = "Hub"
+})
+
+-- ---------- Farm ----------
+local FarmSection = MainTab:CreateSection({
+    Name = "Farm"
+})
+
+FarmSection:AddButton({
+    Name = "Loot Chest 5 Đảo (bấm lại để dừng)",
+    Callback = function() start("Loot Chest", lootChests) end
+})
+
+autoToggle = FarmSection:AddToggle({
+    Name = "Auto Loot Chest + Quét DF",
+    Flag = "Farm_AutoLoot",
+    Value = cfg.autoLoot,
+    Callback = function(v)
+        if not uiReady then return end
+        setAutoLoot(v and true or false)
+    end
+})
+
+FarmSection:AddSlider({
+    Name = "Chest Load Delay",
+    Flag = "Farm_LoadDelay",
+    Value = cfg.loadDelay,
+    Min = 0.5,
+    Max = 6,
+    Precise = 1,
+    Format = function(v) return "Chờ load Chest: " .. tostring(v) .. "s" end,
+    Callback = function(v) cfg.loadDelay = v; saveSoon() end
+})
+
+FarmSection:AddButton({
+    Name = "Quét & Nhặt DF (bấm lại để dừng)",
+    Callback = function() start("Quét DF", scanDF) end
+})
+
+-- ---------- Combat & Tool ----------
+local CombatSection = MainTab:CreateSection({
+    Name = "Combat & Tool"
+})
+
+CombatSection:AddToggle({
+    Name = "Anchor Boss (Đóng băng quái quanh 1000m)",
+    Flag = "Combat_AnchorBoss",
+    Value = cfg.anchorBosses,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.anchorBosses = v and true or false
+        setStatus(cfg.anchorBosses and "Đã Neo Boss (Bán kính 1000)" or "Đã thả Boss", cfg.anchorBosses and GREEN or WHITE)
+        saveSoon()
+    end
+})
+
+CombatSection:AddToggle({
+    Name = "Auto M1 (đánh thường)",
+    Flag = "Combat_AutoM1",
+    Value = cfg.autoM1,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoM1 = v and true or false
+        setStatus(cfg.autoM1 and "Auto M1: BẬT" or "Auto M1: TẮT", cfg.autoM1 and GREEN or WHITE)
+        saveSoon()
+    end
+})
+
+CombatSection:AddSlider({
+    Name = "M1 Delay",
+    Flag = "Combat_M1Delay",
+    Value = cfg.m1Delay,
+    Min = 0.1,
+    Max = 1,
+    Precise = 2,
+    Format = function(v) return "Delay mỗi đòn: " .. tostring(v) .. "s" end,
+    Callback = function(v) cfg.m1Delay = v; saveSoon() end
+})
+
+local equipDrop
+
+local function buildToolList()
+    local list = getToolNames()
+    if cfg.equipTool ~= "" and not table.find(list, cfg.equipTool) then
+        table.insert(list, cfg.equipTool)
+    end
+    if #list == 0 then list = {NO_TOOL} end
+    return list
+end
+
+local function refreshToolList(silent)
+    local list = buildToolList()
+    local done = false
+    if equipDrop then
+        for _, method in ipairs({"Refresh", "SetList", "UpdateList"}) do
+            if type(equipDrop[method]) == "function" then
+                local ok = pcall(function() equipDrop[method](equipDrop, list) end)
+                if ok then done = true break end
+            end
+        end
+    end
+    if not silent then
+        if done then
+            setStatus("🔄 Đã cập nhật danh sách tool (" .. #getToolNames() .. " tool)", GREEN)
+        else
+            setStatus("❌ Library không hỗ trợ refresh dropdown", RED)
+        end
+    end
+end
+
+equipDrop = CombatSection:AddDropdown({
+    Name = "Chọn Tool để cầm",
+    Flag = "Combat_EquipTool",
+    Value = cfg.equipTool ~= "" and cfg.equipTool or nil,
+    List = buildToolList(),
+    Callback = function(v)
+        if not uiReady then return end
+        if type(v) ~= "string" or v == NO_TOOL then return end
+        cfg.equipTool = v
+        saveSoon()
+        equipByName(v)
+        setStatus("Đã chọn tool: " .. v, GREEN)
+    end
+})
+
+CombatSection:AddButton({
+    Name = "🔄 Refresh danh sách Tool",
+    Callback = function() refreshToolList(false) end
+})
+
+CombatSection:AddToggle({
+    Name = "Giữ Tool đã chọn (Auto Equip)",
+    Flag = "Combat_AutoEquip",
+    Value = cfg.autoEquip,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoEquip = v and true or false
+        if cfg.autoEquip and cfg.equipTool == "" then
+            setStatus("Chưa chọn tool nào trong danh sách!", RED)
+        else
+            setStatus(cfg.autoEquip and "Auto Equip: BẬT" or "Auto Equip: TẮT", cfg.autoEquip and GREEN or WHITE)
+        end
+        saveSoon()
+    end
+})
+
+-- ---------- Teleport (Tween) ----------
+local TpSection = MainTab:CreateSection({
+    Name = "Teleport Đảo (Tween)",
+    Side = "Right"
+})
+
+TpSection:AddSlider({
+    Name = "Island Fly Speed",
+    Flag = "Tp_IslandSpeed",
+    Value = cfg.islandSpeed,
+    Min = 100,
+    Max = 2000,
+    Format = function(v) return "Tốc độ bay: " .. tostring(v) end,
+    Callback = function(v) cfg.islandSpeed = v; saveSoon() end
+})
+
+for i, isl in ipairs(ISLANDS) do
+    TpSection:AddButton({
+        Name = "Tween → " .. isl.Name,
+        Callback = function()
+            start("Bay " .. isl.Name, function()
+                setStatus("Đang bay tới " .. isl.Name .. "...", YELLOW)
+                local ok = SafeTween(isl.Pos, cfg.islandSpeed, ISLAND_Y)
+                if cancelFlag then
+                    setStatus("Đã hủy bay!", RED)
+                elseif ok then
+                    setStatus("Đã tới " .. isl.Name, GREEN)
+                else
+                    setStatus("Không bay được (đã chết?)", RED)
+                end
+            end)
+        end
+    })
+end
+
+-- ---------- Server ----------
+local ServerSection = MainTab:CreateSection({
+    Name = "Server",
+    Side = "Right"
+})
+
+ServerSection:AddButton({
+    Name = "Hop Server (Random)",
+    Callback = function() start("Hop Server", doHop) end
+})
+
+-- ---------- Cấu hình ----------
+local CfgSection = MainTab:CreateSection({
+    Name = "Cấu hình",
+    Side = "Right"
+})
+
+CfgSection:AddToggle({
+    Name = "Auto Load Config",
+    Flag = "Cfg_AutoLoad",
+    Value = cfg.autoLoad,
+    Callback = function(v)
+        if not uiReady then return end
+        cfg.autoLoad = v
+        if writefile then pcall(writefile, AUTO_FILE, v and "1" or "0") end
+        if v then saveConfig() end
+        setStatus(v and "Auto Load Config: BẬT (lần sau tự nạp)" or "Auto Load Config: TẮT", v and GREEN or WHITE)
+    end
+})
+
+CfgSection:AddButton({
+    Name = "Lưu Config ngay",
+    Callback = function()
+        local ok = saveConfig()
+        setStatus(ok and "💾 Đã lưu config" or "❌ Lưu config lỗi (xem F9)", ok and GREEN or RED)
+    end
+})
+
+setStatus("Hub: sẵn sàng", GREEN)
+print("✅ Đã load Mega Utility Hub (Bản rút gọn + Anchor Boss)")
+
+task.spawn(function()
+    task.wait(1.5)
+    uiReady = true
+    refreshToolList(true)
+
+    if cfg.autoLoad then
+        if cfg.autoLoot then
+            setStatus("Auto Load: tự bật Auto Loot...", GREEN)
+            setAutoLoot(true)
+        end
+        if cfg.anchorBosses then
+            setStatus("Auto Load: tự bật Anchor Boss...", GREEN)
+        end
+    end
+end)
