@@ -1,5 +1,5 @@
 -- =====================================================================
--- TUANH HUB - ALL IN ONE (FIX WEBHOOK STARTUP & RETRY)
+-- TUANH HUB - ALL IN ONE (FIX AUTO VOTE YES CHUẨN XÁC)
 -- =====================================================================
 if getgenv().TuanhMacro and getgenv().TuanhMacro.cleanup then
     pcall(getgenv().TuanhMacro.cleanup)
@@ -86,10 +86,9 @@ end
 function T.resetWave() T.wave = 1; T.waveStart = os.clock() end
 function T.waveElapsed() return os.clock() - T.waveStart end
 
--- ================= WEBHOOK (FIXED DELTA SUPPORT) =================
+-- ================= WEBHOOK =================
 local lastWebhookTime = 0
 
--- Hàm lấy dữ liệu
 local function getStatsData()
     local stats = LocalPlayer:FindFirstChild("_stats")
     local gem, gold, xp = "N/A", "N/A", "N/A"
@@ -112,11 +111,10 @@ local function getStatsData()
     return mapName, gem, gold, xp
 end
 
--- Hàm gửi (Bắt buộc dùng request của Executor)
 local function sendWebhook(reason)
     local url = T.settings.webhook
     if not url or url == "" then return end
-    if tick() - lastWebhookTime < 5 then return end -- Chống spam gửi 2 lần
+    if tick() - lastWebhookTime < 5 then return end
     lastWebhookTime = tick()
     
     local mapName, gem, gold, xp = getStatsData()
@@ -128,7 +126,6 @@ local function sendWebhook(reason)
     
     task.spawn(function()
         local ok, err = pcall(function()
-            -- Ưu tiên dùng request của Executor
             if request then
                 request({Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body})
             elseif syn and syn.request then
@@ -141,10 +138,8 @@ local function sendWebhook(reason)
         end)
         if ok then
             print("✅ [Webhook] Gửi thành công ("..reason..")!")
-            if T.statusLbl then T.statusLbl.Text = "Đã gửi Webhook "..reason end
         else
             print("❌ [Webhook] Lỗi:", err)
-            if T.statusLbl then T.statusLbl.Text = "Webhook Error!" end
         end
     end)
 end
@@ -294,8 +289,14 @@ task.spawn(function()
                 local holder = voteStart:FindFirstChild("Holder")
                 local btnHolder = holder and holder:FindFirstChild("ButtonHolder")
                 local yesBtn = btnHolder and btnHolder:FindFirstChild("Yes")
-                if yesBtn and yesBtn:IsA("TextButton") and yesBtn.Visible then
+                
+                -- FIX: Kiểm tra kích thước X > 5 để đảm bảo UI đã load xong hoàn toàn
+                if yesBtn and yesBtn:IsA("TextButton") and yesBtn.Visible and yesBtn.AbsoluteSize.X > 5 then
                     if not voted then
+                        -- FIX: Đợi 0.5s để animation bung ra xong
+                        task.wait(0.5)
+                        
+                        -- Cập nhật lại vị trí mới nhất sau khi animation chạy xong
                         local pos = yesBtn.AbsolutePosition + (yesBtn.AbsoluteSize / 2)
                         local inset = GuiService:GetGuiInset()
                         pcall(function()
@@ -308,7 +309,9 @@ task.spawn(function()
                         voted = true
                     end
                 end
-            else voted = false end
+            else 
+                voted = false 
+            end
         end
         
         if T.settings.autoReplay then
@@ -320,8 +323,9 @@ task.spawn(function()
                         if p:IsA("GuiObject") and not p.Visible then isVisible = false; break end
                         p = p.Parent
                     end
-                    if isVisible and not replayed then
+                    if isVisible and not replayed and gui.AbsoluteSize.X > 5 then
                         print("🔥 [VIM] Tìm thấy nút Replay, đang bấm...")
+                        task.wait(0.2)
                         local pos = gui.AbsolutePosition + (gui.AbsoluteSize / 2)
                         local inset = GuiService:GetGuiInset()
                         pcall(function()
@@ -408,7 +412,7 @@ webhookBox.FocusLost:Connect(function()
     T.settings.webhook = webhookBox.Text 
     T.saveSettings() 
     T.status("Đã lưu Webhook!") 
-    sendWebhook("Load") -- Gửi test ngay khi nhập xong link
+    sendWebhook("Load") 
 end)
 
 local list, idx = {}, 0
@@ -469,8 +473,6 @@ toggle("Auto chạy config", "autoPlay")
 
 refresh()
 
--- ================= GỬI WEBHOOK KHỞI ĐỘNG =================
--- Đợi 1 chút để UI load xong và kịp lấy dữ liệu, sau đó gửi Webhook báo hiệu đã bật Script
 task.delay(3, function()
     print("🚀 [Webhook] Đang gửi thông báo khởi động...")
     sendWebhook("Load")
