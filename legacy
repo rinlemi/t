@@ -110,7 +110,7 @@ local WAIT_AFTER_SPAWN = 2
 local MAX_FORCE = 5e4
 
 local RAID_TELEPORT_NAME = "GP_Track_Race"
-local WAIT_AFTER_TELEPORT = 4
+local WAIT_AFTER_TELEPORT = 7
 local RAID_SPEED_MIN, RAID_SPEED_MAX = 40, 40
 local RAID_ACCEL        = 25
 local RAID_DECEL        = 100
