@@ -10,7 +10,7 @@ local SPEED      = 210
 local MAX_SAFE_SPEED = 350
 
 local SPEED_RANDOM   = true
-local RAND_MIN       = 180
+local RAND_MIN       = 200
 local RAND_MAX       = 250
 local RAND_STEP      = 10
 local RAND_MIN_DIFF  = 20
@@ -110,7 +110,7 @@ local WAIT_AFTER_SPAWN = 2
 local MAX_FORCE = 5e4
 
 local RAID_TELEPORT_NAME = "GP_Track_Race"
-local WAIT_AFTER_TELEPORT = 7
+local WAIT_AFTER_TELEPORT = 4
 local RAID_SPEED_MIN, RAID_SPEED_MAX = 40, 40
 local RAID_ACCEL        = 25
 local RAID_DECEL        = 100
