@@ -10,7 +10,7 @@ local SPEED      = 210
 local MAX_SAFE_SPEED = 350
 
 local SPEED_RANDOM   = true
-local RAND_MIN       = 230
+local RAND_MIN       = 240
 local RAND_MAX       = 260
 local RAND_STEP      = 10
 local RAND_MIN_DIFF  = 20
